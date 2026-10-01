@@ -1,8 +1,9 @@
-apiVersion: apiextensions.crossplane.io/v1
+apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
   name: xingresstls.platform.mujak.com
 spec:
+  scope: Namespaced
   group: platform.mujak.com
   names:
     kind: XIngressTLS
