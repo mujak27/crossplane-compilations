@@ -1,0 +1,90 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xingresstls.platform.mujak.com
+spec:
+  group: platform.mujak.com
+  names:
+    kind: XIngressTLS
+    plural: xingresstls
+
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+
+      schema:
+        openAPIV3Schema:
+          type: object
+
+          properties:
+            spec:
+              type: object
+              required:
+                - hostname
+                - ingress
+                - certificate
+
+              properties:
+                hostname:
+                  type: string
+
+                ingress:
+                  type: object
+                  required:
+                    - serviceName
+                    - servicePort
+
+                  properties:
+                    className:
+                      type: string
+
+                    serviceName:
+                      type: string
+
+                    servicePort:
+                      type: integer
+
+                certificate:
+                  type: object
+                  required:
+                    - issuerRef
+
+                  properties:
+                    issuerRef:
+                      type: object
+                      required:
+                        - name
+                        - kind
+
+                      properties:
+                        name:
+                          type: string
+
+                        kind:
+                          type: string
+                          enum:
+                            - Issuer
+                            - ClusterIssuer
+
+            status:
+              type: object
+              properties:
+                certificate:
+                  type: object
+                  properties:
+                    ready:
+                      type: boolean
+
+                    notAfter:
+                      type: string
+
+                    daysRemaining:
+                      type: integer
+
+                    health:
+                      type: string
+                      enum:
+                        - Pending
+                        - Healthy
+                        - Warning

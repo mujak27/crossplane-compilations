@@ -1,0 +1,151 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xingresstls.platform.mujak.com
+
+spec:
+  compositeTypeRef:
+    apiVersion: platform.mujak.com/v1alpha1
+    kind: XIngressTLS
+
+  mode: Pipeline
+
+  pipeline:
+    - step: render
+      functionRef:
+        name: function-go-templating
+
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+
+        source: Inline
+
+        inline:
+
+          template: |
+            {{- $xr := .observed.composite.resource -}}
+            {{- $name := $xr.metadata.name -}}
+            {{- $namespace := $xr.metadata.namespace -}}
+            {{- $hostname := $xr.spec.hostname -}}
+            {{- $secretName := printf "%s-tls" $name -}}
+
+            ---
+            apiVersion: cert-manager.io/v1
+            kind: Certificate
+            metadata:
+              name: {{ $name }}
+              namespace: {{ $namespace }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: certificate
+
+            spec:
+              secretName: {{ $secretName }}
+
+              dnsNames:
+                - {{ $hostname }}
+
+              issuerRef:
+                name: {{ $xr.spec.certificate.issuerRef.name }}
+                kind: {{ $xr.spec.certificate.issuerRef.kind }}
+                group: cert-manager.io
+
+            ---
+            apiVersion: networking.k8s.io/v1
+            kind: Ingress
+            metadata:
+              name: {{ $name }}
+              namespace: {{ $namespace }}
+
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: ingress
+
+                {{- $cert := getComposedResource . "certificate" }}
+
+                {{- if $cert }}
+                {{- with $cert.status.notAfter }}
+                platform.mujak.com/cert-not-after: {{ . | quote }}
+                {{- end }}
+                {{- end }}
+
+            spec:
+              ingressClassName: {{ $xr.spec.ingress.className }}
+
+              tls:
+                - hosts:
+                    - {{ $hostname }}
+
+                  secretName: {{ $secretName }}
+
+              rules:
+                - host: {{ $hostname }}
+
+                  http:
+                    paths:
+                      - path: /
+                        pathType: Prefix
+
+                        backend:
+                          service:
+                            name: {{ $xr.spec.ingress.serviceName }}
+
+                            port:
+                              number: {{ $xr.spec.ingress.servicePort }}
+
+
+            {{- $cert := getComposedResource . "certificate" }}
+
+            {{- $ready := false }}
+            {{- $health := "Pending" }}
+            {{- $notAfter := "" }}
+            {{- $daysRemaining := 0 }}
+
+            {{- if $cert }}
+
+              {{- $readyCondition := getResourceCondition $cert "Ready" }}
+
+              {{- if and $readyCondition (eq $readyCondition.Status "True") }}
+                {{- $ready = true }}
+              {{- end }}
+
+              {{- with $cert.status.notAfter }}
+
+                {{- $notAfter = . }}
+
+                {{- $expiry := toDate "2006-01-02T15:04:05Z" $notAfter }}
+                {{- $now := now }}
+
+                {{- $secondsRemaining := sub ($expiry.Unix) ($now.Unix) }}
+                {{- $daysRemaining = div $secondsRemaining 86400 }}
+
+                {{- if le $secondsRemaining 0 }}
+                  {{- $health = "Expired" }}
+
+                {{- else if le $daysRemaining 15 }}
+                  {{- $health = "Warning" }}
+
+                {{- else if $ready }}
+                  {{- $health = "Healthy" }}
+
+                {{- else }}
+                  {{- $health = "Pending" }}
+
+                {{- end }}
+
+              {{- end }}
+
+            {{- end }}
+
+            ---
+            apiVersion: platform.mujak.com/v1alpha1
+            kind: XIngressTLS
+
+            status:
+              certificate:
+                ready: {{ $ready }}
+                health: {{ $health | quote }}
+                daysRemaining: {{ $daysRemaining }}
+
+                {{- if $notAfter }}
+                notAfter: {{ $notAfter | quote }}
+                {{- end }}

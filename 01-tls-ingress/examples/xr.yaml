@@ -1,0 +1,18 @@
+apiVersion: platform.mujak.com/v1alpha1
+kind: XIngressTLS
+metadata:
+  name: demo
+  namespace: default
+
+spec:
+  hostname: app.mujak.com
+
+  ingress:
+    className: nginx
+    serviceName: app
+    servicePort: 8080
+
+  certificate:
+    issuerRef:
+      name: letsencrypt-prod
+      kind: ClusterIssuer
