@@ -1,0 +1,10 @@
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-tls-ingress
+  annotations:
+    render.crossplane.io/runtime: Development
+    render.crossplane.io/runtime-development-target: localhost:9443
+spec:
+  # Replace with your published package when installing in a cluster.
+  package: function-tls-ingress:v0.1.0

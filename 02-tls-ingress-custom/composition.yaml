@@ -1,0 +1,13 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xingresstls-custom.platform.mujak.com
+spec:
+  compositeTypeRef:
+    apiVersion: platform.mujak.com/v1alpha1
+    kind: XIngressTLS
+  mode: Pipeline
+  pipeline:
+    - step: render
+      functionRef:
+        name: function-tls-ingress
