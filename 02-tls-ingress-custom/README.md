@@ -10,7 +10,17 @@ distinct name, selected explicitly by `examples/xr.yaml`.
 Requires Go 1.26+ (and a toolchain compatible with the dependencies) and the
 Crossplane CLI. Current CLI versions also use Docker for the render engine (or
 accept `--crossplane-binary` pointing to a compatible Crossplane server binary).
-The function itself runs locally. From this directory, start it in one terminal:
+The function itself runs locally. From this directory, run both with:
+
+```sh
+make render
+make render RENDER_ARGS="--verbose --observed-resources examples/observed/healthy.yaml"
+```
+
+The Makefile builds a temporary binary, starts it, waits for port 9443, renders,
+and stops the function on completion or failure. Port 9443 must be free.
+
+Alternatively, start it manually in one terminal:
 
 ```sh
 cd function

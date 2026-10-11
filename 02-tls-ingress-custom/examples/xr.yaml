@@ -4,8 +4,9 @@ metadata:
   name: demo
   namespace: default
 spec:
-  compositionRef:
-    name: xingresstls-custom.platform.mujak.com
+  crossplane:
+    compositionRef:
+      name: xingresstls-custom.platform.mujak.com
   hostname: app.mujak.com
   ingress:
     className: nginx
