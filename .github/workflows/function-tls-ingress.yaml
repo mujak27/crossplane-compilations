@@ -1,0 +1,136 @@
+name: TLS ingress function
+
+on:
+  pull_request:
+    paths:
+      - '02-tls-ingress-custom/**'
+      - '.github/workflows/function-tls-ingress.yaml'
+  push:
+    tags:
+      - 'function-tls-ingress-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: '1.27.1'
+  CROSSPLANE_VERSION: 'v2.5.0'
+  # SHA256 of the pinned linux/amd64 CLI from cli.crossplane.io.
+  CROSSPLANE_SHA256: '065dd6b40c9ea5fc71e49900d5c924cc0bec7f58375922ddbde6b402f292347e'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Test and build package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: 02-tls-ingress-custom/function/go.sum
+
+      - name: Test and vet
+        working-directory: 02-tls-ingress-custom/function
+        run: |
+          go test -race ./...
+          go vet ./...
+
+      - name: Install Crossplane CLI
+        run: |
+          curl --fail --silent --show-error --location \
+            "https://cli.crossplane.io/stable/${CROSSPLANE_VERSION}/bin/linux_amd64/crossplane" \
+            --output "${RUNNER_TEMP}/crossplane"
+          echo "${CROSSPLANE_SHA256}  ${RUNNER_TEMP}/crossplane" | sha256sum --check
+          chmod +x "${RUNNER_TEMP}/crossplane"
+          echo "${RUNNER_TEMP}" >> "$GITHUB_PATH"
+
+      - name: Build runtime image
+        run: |
+          docker build --platform linux/amd64 \
+            --build-arg "GO_VERSION=${GO_VERSION}" \
+            --tag function-tls-ingress:runtime \
+            ./02-tls-ingress-custom/function
+
+      - name: Build Crossplane package
+        run: |
+          crossplane xpkg build \
+            --package-root 02-tls-ingress-custom/function/package \
+            --embed-runtime-image function-tls-ingress:runtime \
+            --package-file "${RUNNER_TEMP}/function-tls-ingress.xpkg"
+
+      - name: Upload release package
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/function-tls-ingress-v')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: function-tls-ingress-xpkg
+          path: ${{ runner.temp }}/function-tls-ingress.xpkg
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish release to GHCR
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/function-tls-ingress-v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Resolve release version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          version="${RELEASE_TAG#function-tls-ingress-}"
+          if [[ ! "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Expected release tag function-tls-ingress-vMAJOR.MINOR.PATCH" >&2
+            exit 1
+          fi
+          echo "PACKAGE=ghcr.io/${REPOSITORY_OWNER,,}/function-tls-ingress:${version}" >> "$GITHUB_ENV"
+
+      - name: Download release package
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: function-tls-ingress-xpkg
+          path: ${{ runner.temp }}/package
+
+      - name: Install Crossplane CLI
+        run: |
+          curl --fail --silent --show-error --location \
+            "https://cli.crossplane.io/stable/${CROSSPLANE_VERSION}/bin/linux_amd64/crossplane" \
+            --output "${RUNNER_TEMP}/crossplane"
+          echo "${CROSSPLANE_SHA256}  ${RUNNER_TEMP}/crossplane" | sha256sum --check
+          chmod +x "${RUNNER_TEMP}/crossplane"
+          echo "${RUNNER_TEMP}" >> "$GITHUB_PATH"
+
+      - name: Authenticate to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
+
+      - name: Publish Crossplane package
+        env:
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          crossplane xpkg push \
+            --package-files "${RUNNER_TEMP}/package/function-tls-ingress.xpkg" \
+            --oci-annotation "org.opencontainers.image.source=${SOURCE_URL}" \
+            "$PACKAGE"
+          echo "Published \`$PACKAGE\` (linux/amd64)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log out of GHCR
+        if: always()
+        run: docker logout ghcr.io

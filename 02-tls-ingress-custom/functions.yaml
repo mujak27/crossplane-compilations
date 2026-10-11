@@ -6,5 +6,5 @@ metadata:
     render.crossplane.io/runtime: Development
     render.crossplane.io/runtime-development-target: localhost:9443
 spec:
-  # Replace with your published package when installing in a cluster.
-  package: function-tls-ingress:v0.1.0
+  # Publish this release before installing in a cluster.
+  package: ghcr.io/mujak27/function-tls-ingress:v0.1.0
