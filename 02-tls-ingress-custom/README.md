@@ -77,6 +77,60 @@ the warning boundary is covered deterministically by the Go tests.
 
 ## Build and publish
 
+### GitHub Actions and GHCR
+
+The workflow in `../.github/workflows/function-tls-ingress.yaml` tests, vets,
+builds the runtime image, and embeds it in an installable Crossplane xpkg.
+It targets **linux/amd64**; ARM64 clusters need a separate ARM64 build.
+Go is pinned to 1.27.1 and the Crossplane CLI to v2.5.0. When upgrading Go,
+update both the workflow and the Dockerfile default; when upgrading the CLI,
+update its version and linux/amd64 SHA256 in the workflow.
+
+- Pull requests changing this example or its workflow build without publishing.
+- Manual runs from GitHub's Actions tab also build without publishing.
+- Pushing `function-tls-ingress-vMAJOR.MINOR.PATCH` publishes the tested package
+  to `ghcr.io/mujak27/function-tls-ingress:vMAJOR.MINOR.PATCH`.
+
+After merging the workflow, release from the repository root:
+
+```sh
+git switch main
+git pull --ff-only
+git tag function-tls-ingress-v0.1.0
+git push origin function-tls-ingress-v0.1.0
+```
+
+Publishing uses the repository's automatic `GITHUB_TOKEN` with `packages: write`
+only in the release job; no PAT or additional repository secret is required.
+The runtime image is embedded, not published separately. The final package
+carries a source-repository annotation and is published from this repository's
+workflow so GitHub can associate the package with the repository.
+
+**One-time setup after the first release:** open your GitHub profile's Packages
+page, select `function-tls-ingress`, and change its visibility to **Public** in
+Package settings. New GHCR packages are private by default, even for public
+repositories. Confirm the package is linked to `mujak27/crossplane-compilations`;
+if a package with this name already exists, grant this repository Actions access
+before publishing. Public visibility lets Crossplane pull without credentials.
+GHCR container storage and bandwidth are currently free; standard GitHub-hosted
+Actions runners are free for this public repository.
+
+`functions.yaml` references `v0.1.0`; it cannot be installed until that release
+has been published and made public. Update the reference for later releases.
+The Development annotations remain for local rendering only. For a cluster
+smoke test after publishing:
+
+```sh
+kubectl apply -f functions.yaml
+kubectl wait --for=condition=Installed function/function-tls-ingress --timeout=120s
+kubectl wait --for=condition=Healthy function/function-tls-ingress --timeout=120s
+```
+
+See [GHCR authentication and visibility](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
+and [GitHub Packages billing](https://docs.github.com/en/packages/learn-github-packages/introduction-to-github-packages).
+
+### Manual publishing
+
 From this directory (replace the registry with one you own):
 
 ```sh
