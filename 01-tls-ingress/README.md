@@ -17,6 +17,12 @@ and its TLS Secret is `default/tls-ingress-demo-tls`.
 `kubectl kustomize .` renders only the XRD and Composition. Install Functions and
 RBAC separately. See the root [naming convention](../README.md#naming-and-installation).
 
+## Render regression test
+
+Run `bash tests/render.sh` from this directory (requires Crossplane CLI and Docker).
+It checks the initial render without a Certificate and a subsequent render with
+an observed, ready Certificate, including certificate health and expiry annotation.
+
 ## Migrating an existing LegacyCluster XRD
 
 Scope cannot be changed in place. Do not simply apply the new XRD over the old
