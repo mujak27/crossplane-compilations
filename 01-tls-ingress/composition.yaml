@@ -102,7 +102,7 @@ spec:
 
             {{- if $cert }}
 
-              {{- $readyCondition := getResourceCondition $cert "Ready" }}
+              {{- $readyCondition := getResourceCondition "Ready" $cert }}
 
               {{- if and $readyCondition (eq $readyCondition.Status "True") }}
                 {{- $ready = true }}
