@@ -5,7 +5,7 @@ metadata:
 spec:
   compositeTypeRef:
     apiVersion: platform.mujak.com/v1alpha1
-    kind: XIngressTLS
+    kind: XIngressTLSCustom
   mode: Pipeline
   pipeline:
     - step: render
