@@ -1,7 +1,7 @@
 apiVersion: platform.mujak.com/v1alpha1
 kind: XIngressTLSCustom
 metadata:
-  name: demo-custom
+  name: tls-ingress-custom-demo
   namespace: default
 spec:
   crossplane:

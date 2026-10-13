@@ -89,3 +89,4 @@ spec:
                         - Pending
                         - Healthy
                         - Warning
+                        - Expired
