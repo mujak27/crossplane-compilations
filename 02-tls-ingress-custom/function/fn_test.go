@@ -55,9 +55,9 @@ func TestRunFunction(t *testing.T) {
 			req := &fnv1.RunFunctionRequest{
 				Meta: &fnv1.RequestMeta{Tag: "test"},
 				Observed: &fnv1.State{Composite: &fnv1.Resource{Resource: resource.MustStructJSON(`{
-					"apiVersion":"platform.mujak.com/v1alpha1","kind":"XIngressTLS",
-					"metadata":{"name":"demo","namespace":"default"},
-					"spec":{"hostname":"app.mujak.com","ingress":{"serviceName":"app","servicePort":8080},
+					"apiVersion":"platform.mujak.com/v1alpha1","kind":"XIngressTLSCustom",
+					"metadata":{"name":"demo-custom","namespace":"default"},
+					"spec":{"hostname":"app-custom.mujak.com","ingress":{"serviceName":"app","servicePort":8080},
 					"certificate":{"issuerRef":{"name":"letsencrypt-prod","kind":"ClusterIssuer"}}}}`)}},
 				Desired: &fnv1.State{
 					Composite: &fnv1.Resource{Resource: resource.MustStructJSON(`{"status":{"other":"preserved","certificate":{"notAfter":"stale"}}}`)},
@@ -90,12 +90,12 @@ func TestRunFunction(t *testing.T) {
 				t.Fatal("incoming composite readiness lost")
 			}
 			cert := rsp.Desired.Resources["certificate"].Resource.AsMap()
-			wantCert := resource.MustStructJSON(`{"apiVersion":"cert-manager.io/v1","kind":"Certificate","metadata":{"name":"demo","namespace":"default"},"spec":{"secretName":"demo-tls","dnsNames":["app.mujak.com"],"issuerRef":{"name":"letsencrypt-prod","kind":"ClusterIssuer","group":"cert-manager.io"}}}`).AsMap()
+			wantCert := resource.MustStructJSON(`{"apiVersion":"cert-manager.io/v1","kind":"Certificate","metadata":{"name":"demo-custom","namespace":"default"},"spec":{"secretName":"demo-custom-tls","dnsNames":["app-custom.mujak.com"],"issuerRef":{"name":"letsencrypt-prod","kind":"ClusterIssuer","group":"cert-manager.io"}}}`).AsMap()
 			if diff := cmp.Diff(wantCert, cert); diff != "" {
 				t.Fatal(diff)
 			}
 			ingress := rsp.Desired.Resources["ingress"].Resource.AsMap()
-			wantIngress := resource.MustStructJSON(`{"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"name":"demo","namespace":"default"},"spec":{"tls":[{"hosts":["app.mujak.com"],"secretName":"demo-tls"}],"rules":[{"host":"app.mujak.com","http":{"paths":[{"path":"/","pathType":"Prefix","backend":{"service":{"name":"app","port":{"number":8080}}}}]}}]}}`).AsMap()
+			wantIngress := resource.MustStructJSON(`{"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"name":"demo-custom","namespace":"default"},"spec":{"tls":[{"hosts":["app-custom.mujak.com"],"secretName":"demo-custom-tls"}],"rules":[{"host":"app-custom.mujak.com","http":{"paths":[{"path":"/","pathType":"Prefix","backend":{"service":{"name":"app","port":{"number":8080}}}}]}}]}}`).AsMap()
 			if withClass {
 				wantIngress["spec"].(map[string]interface{})["ingressClassName"] = "nginx"
 			}

@@ -2,8 +2,17 @@
 
 Same composition behavior as `../01-tls-ingress`, without inline Go templates.
 `function/fn.go` builds the Certificate and Ingress directly using the Crossplane
-Go function SDK. The XRD and XR inputs are unchanged; the new Composition has a
-distinct name, selected explicitly by `examples/xr.yaml`.
+Go function SDK. This example uses a separate namespaced `XIngressTLSCustom` XRD
+with the same input schema. Its Composition has a distinct name, selected
+explicitly by `examples/xr.yaml`.
+
+The example XR is `default/demo-custom` with hostname `app-custom.mujak.com`.
+It creates Certificate and Ingress `default/demo-custom`, using TLS Secret
+`default/demo-custom-tls`, so it can coexist with example 01's `default/demo`.
+For additional XRs, use distinct names within the namespace (even across XR
+kinds) and distinct ingress hostnames. Configure DNS for the custom hostname
+before requesting a certificate. The backend service and issuer are shared
+dependencies, not resources created by this example.
 
 ## Local rendering (no cluster required)
 
@@ -149,9 +158,9 @@ assumes support for composing native Kubernetes resources, cert-manager and its
 issuer, the ingress controller and backend service, and appropriate Crossplane
 RBAC for Certificates and Ingresses.
 
-The XRD is shared with `01-tls-ingress`; do not delete it when switching examples.
-This example does not change the original XRD's scope or compatibility assumptions.
+The XRD is independent of `01-tls-ingress`; installing it does not modify the
+original example's XRD. Both use namespaced Crossplane v2 composites.
 It also preserves the original schema's known omission of `Expired` from the
 health enum, even though both implementations emit that value. Local rendering
 does not validate it; a cluster deployment needs that enum value added to the
-shared XRD if it must accept expired certificate status.
+appropriate XRD if it must accept expired certificate status.
