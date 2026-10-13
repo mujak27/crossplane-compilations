@@ -1,10 +1,13 @@
 apiVersion: platform.mujak.com/v1alpha1
 kind: XIngressTLS
 metadata:
-  name: demo
+  name: tls-ingress-demo
   namespace: default
 
 spec:
+  crossplane:
+    compositionRef:
+      name: xingresstls.platform.mujak.com
   hostname: app.mujak.com
 
   ingress:

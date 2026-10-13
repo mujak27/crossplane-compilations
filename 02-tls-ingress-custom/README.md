@@ -6,13 +6,18 @@ Go function SDK. This example uses a separate namespaced `XIngressTLSCustom` XRD
 with the same input schema. Its Composition has a distinct name, selected
 explicitly by `examples/xr.yaml`.
 
-The example XR is `default/demo-custom` with hostname `app-custom.mujak.com`.
-It creates Certificate and Ingress `default/demo-custom`, using TLS Secret
-`default/demo-custom-tls`, so it can coexist with example 01's `default/demo`.
+The example XR is `default/tls-ingress-custom-demo` with hostname `app-custom.mujak.com`.
+It creates Certificate and Ingress `default/tls-ingress-custom-demo`, using TLS Secret
+`default/tls-ingress-custom-demo-tls`, so it can coexist with example 01's
+`default/tls-ingress-demo`.
 For additional XRs, use distinct names within the namespace (even across XR
 kinds) and distinct ingress hostnames. Configure DNS for the custom hostname
 before requesting a certificate. The backend service and issuer are shared
 dependencies, not resources created by this example.
+
+`kubectl kustomize .` renders only the XRD and Composition. Install Functions and
+RBAC separately. See the root [naming and migration convention](../README.md#naming-and-installation)
+before replacing an existing example XR.
 
 ## Local rendering (no cluster required)
 
@@ -160,7 +165,5 @@ RBAC for Certificates and Ingresses.
 
 The XRD is independent of `01-tls-ingress`; installing it does not modify the
 original example's XRD. Both use namespaced Crossplane v2 composites.
-It also preserves the original schema's known omission of `Expired` from the
-health enum, even though both implementations emit that value. Local rendering
-does not validate it; a cluster deployment needs that enum value added to the
-appropriate XRD if it must accept expired certificate status.
+Both XRD health enums include `Expired`, matching the values emitted by the
+implementations. Consumers of these definitions no longer need a local enum patch.

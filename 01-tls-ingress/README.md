@@ -10,6 +10,14 @@ namespace, which `composition.yaml` reads from `metadata.namespace`. The example
 uses namespace `default`, Service `app:8080`, and ClusterIssuer `letsencrypt-prod`;
 provision those dependencies separately.
 
+The example XR is `default/tls-ingress-demo` and explicitly selects
+`xingresstls.platform.mujak.com`. Its Certificate and Ingress use the same name,
+and its TLS Secret is `default/tls-ingress-demo-tls`.
+
+`kubectl kustomize .` renders only the XRD and Composition. Install Functions and
+RBAC separately. See the root [naming and migration convention](../README.md#naming-and-installation)
+before replacing an existing example XR.
+
 ## Migrating an existing LegacyCluster XRD
 
 Scope cannot be changed in place. Do not simply apply the new XRD over the old
