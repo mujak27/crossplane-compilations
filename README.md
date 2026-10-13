@@ -55,22 +55,3 @@ The URL above is a release convention, not an already published tag. Never move
 an existing release tag. The older `function-tls-ingress-v0.1.0` source tag has a
 custom XRD that shares the original API identity; do not use it as the custom
 definitions base. Its runtime package can still be used with the distinct API.
-
-### Migrating existing examples
-
-The example XR names now include their project IDs. Renaming an existing XR
-creates a different resource, not an in-place update. In a test environment:
-
-1. Pause GitOps reconciliation for the affected XRs and back up their manifests.
-2. Delete the old XRs and wait for finalizers and owned resources to be cleaned up.
-   Confirm the old Certificate, Ingress and TLS Secret are gone; inspect any
-   leftover resources before deleting them. Do not bypass finalizers blindly.
-3. Install the distinct definitions and shared dependencies, then create the new
-   XRs and resume reconciliation. Verify resource namespaces, certificate issuance
-   and ingress routing. Downtime during this migration is expected.
-
-If the old custom installation shared the original XRD, retain that XRD for the
-original project; migrate only the custom XRs to `XIngressTLSCustom`. With pruning
-disabled, removed manifests may remain live and need explicit cleanup. Both XRDs
-now accept `Expired` certificate health, so the corresponding GitOps enum patch
-can be removed once the new definitions are consumed.

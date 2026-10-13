@@ -16,8 +16,7 @@ before requesting a certificate. The backend service and issuer are shared
 dependencies, not resources created by this example.
 
 `kubectl kustomize .` renders only the XRD and Composition. Install Functions and
-RBAC separately. See the root [naming and migration convention](../README.md#naming-and-installation)
-before replacing an existing example XR.
+RBAC separately. See the root [naming convention](../README.md#naming-and-installation).
 
 ## Local rendering (no cluster required)
 

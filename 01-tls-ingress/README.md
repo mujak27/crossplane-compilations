@@ -15,8 +15,7 @@ The example XR is `default/tls-ingress-demo` and explicitly selects
 and its TLS Secret is `default/tls-ingress-demo-tls`.
 
 `kubectl kustomize .` renders only the XRD and Composition. Install Functions and
-RBAC separately. See the root [naming and migration convention](../README.md#naming-and-installation)
-before replacing an existing example XR.
+RBAC separately. See the root [naming convention](../README.md#naming-and-installation).
 
 ## Migrating an existing LegacyCluster XRD
 
