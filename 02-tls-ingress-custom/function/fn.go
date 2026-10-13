@@ -11,8 +11,10 @@ import (
 	"github.com/crossplane/function-sdk-go/resource"
 	"github.com/crossplane/function-sdk-go/resource/composed"
 	"github.com/crossplane/function-sdk-go/response"
+	"github.com/crossplane/function-tls-ingress/api/v1alpha1"
 	"google.golang.org/protobuf/proto"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // Function composes an Ingress and Certificate and projects certificate status.
@@ -51,30 +53,16 @@ func (f *Function) compose(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionRe
 		return fmt.Errorf("get observed resources: %w", err)
 	}
 
-	host, err := xr.Resource.GetString("spec.hostname")
-	if err != nil {
-		return fmt.Errorf("get hostname: %w", err)
+	var composite v1alpha1.XIngressTLSCustom
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(xr.Resource.Object, &composite); err != nil {
+		return fmt.Errorf("convert observed composite: %w", err)
 	}
-	service, err := xr.Resource.GetString("spec.ingress.serviceName")
-	if err != nil {
-		return fmt.Errorf("get serviceName: %w", err)
+	spec := composite.Spec
+	if spec.Hostname == nil || spec.Ingress.ServiceName == nil || spec.Ingress.ServicePort == nil ||
+		spec.Certificate.IssuerRef.Name == nil || spec.Certificate.IssuerRef.Kind == nil {
+		return fmt.Errorf("composite spec requires hostname, ingress.serviceName, ingress.servicePort, certificate.issuerRef.name and certificate.issuerRef.kind")
 	}
-	port, err := xr.Resource.GetInteger("spec.ingress.servicePort")
-	if err != nil {
-		return fmt.Errorf("get servicePort: %w", err)
-	}
-	issuer, err := xr.Resource.GetString("spec.certificate.issuerRef.name")
-	if err != nil {
-		return fmt.Errorf("get issuer name: %w", err)
-	}
-	issuerKind, err := xr.Resource.GetString("spec.certificate.issuerRef.kind")
-	if err != nil {
-		return fmt.Errorf("get issuer kind: %w", err)
-	}
-	class, _, err := unstructured.NestedString(xr.Resource.Object, "spec", "ingress", "className")
-	if err != nil {
-		return fmt.Errorf("get ingress class: %w", err)
-	}
+	host := *spec.Hostname
 
 	now := time.Now
 	if f.now != nil {
@@ -85,7 +73,7 @@ func (f *Function) compose(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionRe
 		cert = c.Resource.Object
 	}
 	status := certificateStatus(cert, now())
-	name, namespace := xr.Resource.GetName(), xr.Resource.GetNamespace()
+	name, namespace := composite.Name, composite.Namespace
 	secret := name + "-tls"
 	metadata := func() map[string]interface{} {
 		return map[string]interface{}{"name": name, "namespace": namespace}
@@ -94,12 +82,12 @@ func (f *Function) compose(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionRe
 		"apiVersion": "cert-manager.io/v1", "kind": "Certificate", "metadata": metadata(),
 		"spec": map[string]interface{}{
 			"secretName": secret, "dnsNames": []interface{}{host},
-			"issuerRef": map[string]interface{}{"name": issuer, "kind": issuerKind, "group": "cert-manager.io"},
+			"issuerRef": map[string]interface{}{"name": *spec.Certificate.IssuerRef.Name, "kind": *spec.Certificate.IssuerRef.Kind, "group": "cert-manager.io"},
 		},
 	}
 	ingressMeta := metadata()
-	if expiry, ok := status["notAfter"]; ok {
-		ingressMeta["annotations"] = map[string]interface{}{"platform.mujak.com/cert-not-after": expiry}
+	if status.NotAfter != "" {
+		ingressMeta["annotations"] = map[string]interface{}{"platform.mujak.com/cert-not-after": status.NotAfter}
 	}
 	ingressSpec := map[string]interface{}{
 		"tls": []interface{}{map[string]interface{}{"hosts": []interface{}{host}, "secretName": secret}},
@@ -108,13 +96,13 @@ func (f *Function) compose(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionRe
 			"http": map[string]interface{}{"paths": []interface{}{map[string]interface{}{
 				"path": "/", "pathType": "Prefix",
 				"backend": map[string]interface{}{"service": map[string]interface{}{
-					"name": service, "port": map[string]interface{}{"number": port},
+					"name": *spec.Ingress.ServiceName, "port": map[string]interface{}{"number": *spec.Ingress.ServicePort},
 				}},
 			}}},
 		}},
 	}
-	if class != "" {
-		ingressSpec["ingressClassName"] = class
+	if spec.Ingress.ClassName != "" {
+		ingressSpec["ingressClassName"] = spec.Ingress.ClassName
 	}
 	ingress := map[string]interface{}{
 		"apiVersion": "networking.k8s.io/v1", "kind": "Ingress", "metadata": ingressMeta, "spec": ingressSpec,
@@ -122,7 +110,11 @@ func (f *Function) compose(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionRe
 	// SDK resource keys replace the go-templating-specific resource-name annotation.
 	desired["certificate"] = &resource.DesiredComposed{Resource: &composed.Unstructured{Unstructured: unstructured.Unstructured{Object: certificate}}}
 	desired["ingress"] = &resource.DesiredComposed{Resource: &composed.Unstructured{Unstructured: unstructured.Unstructured{Object: ingress}}}
-	if err := unstructured.SetNestedMap(dxr.Resource.Object, status, "status", "certificate"); err != nil {
+	certificateStatusMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&status)
+	if err != nil {
+		return fmt.Errorf("convert certificate status: %w", err)
+	}
+	if err := unstructured.SetNestedMap(dxr.Resource.Object, certificateStatusMap, "status", "certificate"); err != nil {
 		return fmt.Errorf("set certificate status: %w", err)
 	}
 	if err := response.SetDesiredCompositeResource(rsp, dxr); err != nil {
@@ -135,7 +127,7 @@ func (f *Function) compose(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionRe
 
 // certificateStatus mirrors the original template, including whole-day warning
 // calculation and Ready being independent from expiry health.
-func certificateStatus(cert map[string]interface{}, now time.Time) map[string]interface{} {
+func certificateStatus(cert map[string]interface{}, now time.Time) v1alpha1.CertificateStatus {
 	ready := false
 	conditions, _, _ := unstructured.NestedSlice(cert, "status", "conditions")
 	for _, c := range conditions {
@@ -145,24 +137,24 @@ func certificateStatus(cert map[string]interface{}, now time.Time) map[string]in
 			break
 		}
 	}
-	status := map[string]interface{}{"ready": ready, "health": "Pending", "daysRemaining": int64(0)}
+	status := v1alpha1.CertificateStatus{Ready: ready, Health: "Pending"}
 	notAfter, _, _ := unstructured.NestedString(cert, "status", "notAfter")
 	if notAfter == "" {
 		return status
 	}
-	status["notAfter"] = notAfter
+	status.NotAfter = notAfter
 	// Sprig's toDate returns the zero time on invalid input; preserve that behavior.
 	expiry, _ := time.Parse("2006-01-02T15:04:05Z", notAfter)
 	seconds := expiry.Unix() - now.Unix()
 	days := seconds / 86400
-	status["daysRemaining"] = days
+	status.DaysRemaining = days
 	switch {
 	case seconds <= 0:
-		status["health"] = "Expired"
+		status.Health = "Expired"
 	case days <= 15:
-		status["health"] = "Warning"
+		status.Health = "Warning"
 	case ready:
-		status["health"] = "Healthy"
+		status.Health = "Healthy"
 	}
 	return status
 }
