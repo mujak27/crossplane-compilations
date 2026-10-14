@@ -63,17 +63,28 @@ annotations from the SDK resource keys `certificate` and `ingress`.
   An omitted ingress class is left unset.
 - Observed Certificate `status.notAfter`, when present, is copied to the Ingress
   annotation `platform.mujak.com/cert-not-after` and XR certificate status.
-- `status.certificate.ready` is true only for Certificate `Ready=True`.
+- Certificate provisioning readiness requires `Ready=True` with
+  `observedGeneration` equal to the Certificate's current `metadata.generation`,
+  and a valid `status.notAfter` strictly in the future. Missing, stale, invalid,
+  or expired data keeps the composed Certificate unready.
 - `daysRemaining` is `(expiry.Unix() - now.Unix()) / 86400`, truncated toward zero.
-- Health precedence: expired at or before now → `Expired`; at most 15 whole days
-  remaining → `Warning`; otherwise ready → `Healthy`; otherwise → `Pending`.
-- Missing expiry yields `Pending`, zero days, and no `notAfter`, even when ready.
-- Malformed expiry preserves the template's Sprig `toDate` behavior: parsing with
-  `2006-01-02T15:04:05Z` falls back to Go's zero time and yields `Expired`.
+- Health precedence: expired or invalid expiry → `Expired`; at most 15 whole
+  days remaining → `Warning`; otherwise ready → `Healthy`; otherwise → `Pending`.
+- Near-expiry certificates remain provisioned and ready while health reports
+  `Warning`. Missing expiry yields `Pending`, zero days, and no `notAfter`.
+- Ingress provisioning readiness requires its observed host, TLS host and Secret,
+  paths/path types, backend service/port, and any explicitly requested class to
+  match the desired configuration. Empty load-balancer status is acceptable;
+  controller metadata/status and an admission-defaulted class are ignored.
+- Backend Service/endpoints availability and HTTPS/application health are
+  separate from composite provisioning readiness.
 - Unrelated incoming desired resources and composite status fields are preserved.
 
-There is deliberately no auto-ready pipeline step: the original example declares
-that function but never calls it. Certificate status is not composite readiness.
+The function explicitly reports readiness for the Certificate and Ingress;
+Crossplane derives composite provisioning readiness from those composed
+resources. It does not force the XR ready. Application health is a separate
+signal and is not inferred from an empty Ingress load balancer or Certificate
+condition alone.
 
 ## Tests
 
@@ -84,7 +95,8 @@ go vet ./...
 ```
 
 Tests use a fixed clock for exact expiry/warning boundaries and exercise the
-function request/response, rendered resources, status, and desired-state preservation.
+function request/response, readiness transitions, rendered resources, status,
+and desired-state preservation.
 The observed YAML fixtures use distant dates so normal rendering stays useful;
 the warning boundary is covered deterministically by the Go tests.
 
