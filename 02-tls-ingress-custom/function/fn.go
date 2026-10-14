@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/crossplane/function-sdk-go/logging"
@@ -108,8 +109,18 @@ func (f *Function) compose(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionRe
 		"apiVersion": "networking.k8s.io/v1", "kind": "Ingress", "metadata": ingressMeta, "spec": ingressSpec,
 	}
 	// SDK resource keys replace the go-templating-specific resource-name annotation.
-	desired["certificate"] = &resource.DesiredComposed{Resource: &composed.Unstructured{Unstructured: unstructured.Unstructured{Object: certificate}}}
-	desired["ingress"] = &resource.DesiredComposed{Resource: &composed.Unstructured{Unstructured: unstructured.Unstructured{Object: ingress}}}
+	desired["certificate"] = &resource.DesiredComposed{
+		Resource: &composed.Unstructured{Unstructured: unstructured.Unstructured{Object: certificate}},
+		Ready:    readyValue(status.Ready),
+	}
+	var observedIngress map[string]interface{}
+	if r, ok := observed["ingress"]; ok && r.Resource != nil {
+		observedIngress = r.Resource.Object
+	}
+	desired["ingress"] = &resource.DesiredComposed{
+		Resource: &composed.Unstructured{Unstructured: unstructured.Unstructured{Object: ingress}},
+		Ready:    readyValue(ingressReady(observedIngress, ingressSpec)),
+	}
 	certificateStatusMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&status)
 	if err != nil {
 		return fmt.Errorf("convert certificate status: %w", err)
@@ -120,41 +131,113 @@ func (f *Function) compose(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionRe
 	if err := response.SetDesiredCompositeResource(rsp, dxr); err != nil {
 		return err
 	}
-	// The SDK's composite getter does not carry Ready through its wrapper.
-	rsp.Desired.Composite.Ready = req.GetDesired().GetComposite().GetReady()
 	return response.SetDesiredComposedResources(rsp, desired)
 }
 
-// certificateStatus mirrors the original template, including whole-day warning
-// calculation and Ready being independent from expiry health.
+func readyValue(ready bool) resource.Ready {
+	if ready {
+		return resource.ReadyTrue
+	}
+	return resource.ReadyFalse
+}
+
+// certificateStatus reports current-generation readiness and keeps whole-day
+// warning health separate from provisioning readiness.
 func certificateStatus(cert map[string]interface{}, now time.Time) v1alpha1.CertificateStatus {
 	ready := false
+	generationValue, hasGeneration, _ := unstructured.NestedFieldNoCopy(cert, "metadata", "generation")
+	generation, generationValid := numericInt64(generationValue)
 	conditions, _, _ := unstructured.NestedSlice(cert, "status", "conditions")
 	for _, c := range conditions {
 		condition, ok := c.(map[string]interface{})
 		if ok && condition["type"] == "Ready" {
-			ready = condition["status"] == "True"
+			observedGeneration, hasObservedGeneration := numericInt64(condition["observedGeneration"])
+			ready = hasGeneration && generationValid && hasObservedGeneration && observedGeneration == generation && condition["status"] == "True"
 			break
 		}
 	}
-	status := v1alpha1.CertificateStatus{Ready: ready, Health: "Pending"}
+	status := v1alpha1.CertificateStatus{Health: "Pending"}
 	notAfter, _, _ := unstructured.NestedString(cert, "status", "notAfter")
 	if notAfter == "" {
 		return status
 	}
 	status.NotAfter = notAfter
-	// Sprig's toDate returns the zero time on invalid input; preserve that behavior.
-	expiry, _ := time.Parse("2006-01-02T15:04:05Z", notAfter)
+	expiry, err := time.Parse(time.RFC3339, notAfter)
+	if err != nil {
+		status.Health = "Expired"
+		return status
+	}
 	seconds := expiry.Unix() - now.Unix()
 	days := seconds / 86400
 	status.DaysRemaining = days
 	switch {
-	case seconds <= 0:
+	case !expiry.After(now):
 		status.Health = "Expired"
 	case days <= 15:
 		status.Health = "Warning"
 	case ready:
 		status.Health = "Healthy"
 	}
+	status.Ready = ready && expiry.After(now)
 	return status
+}
+
+func ingressReady(observed, desired map[string]interface{}) bool {
+	if observed == nil {
+		return false
+	}
+	observedSpec, found, _ := unstructured.NestedMap(observed, "spec")
+	if !found {
+		return false
+	}
+	for _, field := range []string{"rules", "tls"} {
+		want, wantFound := desired[field]
+		got, gotFound := observedSpec[field]
+		if !wantFound || !gotFound || !reflect.DeepEqual(normalizeNumbers(want), normalizeNumbers(got)) {
+			return false
+		}
+	}
+	if class, requested := desired["ingressClassName"]; requested {
+		if !reflect.DeepEqual(class, observedSpec["ingressClassName"]) {
+			return false
+		}
+	}
+	return true
+}
+
+func numericInt64(v interface{}) (int64, bool) {
+	switch n := v.(type) {
+	case int64:
+		return n, true
+	case int32:
+		return int64(n), true
+	case int:
+		return int64(n), true
+	case float64:
+		if float64(int64(n)) == n {
+			return int64(n), true
+		}
+	}
+	return 0, false
+}
+
+func normalizeNumbers(v interface{}) interface{} {
+	switch x := v.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(x))
+		for k, value := range x {
+			out[k] = normalizeNumbers(value)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(x))
+		for i, value := range x {
+			out[i] = normalizeNumbers(value)
+		}
+		return out
+	case int, int32, int64:
+		return float64(reflect.ValueOf(x).Int())
+	default:
+		return v
+	}
 }

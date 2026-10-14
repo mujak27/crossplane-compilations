@@ -31,24 +31,24 @@ func TestCertificateStatus(t *testing.T) {
 		ready                           bool
 	}{
 		{"missing", "", "", "Pending", 0, false},
-		{"ready without expiry", "True", "", "Pending", 0, true},
+		{"ready without expiry", "True", "", "Pending", 0, false},
 		{"healthy", "True", "2026-11-03T12:00:00Z", "Healthy", 30, true},
 		{"not ready", "False", "2026-11-03T12:00:00Z", "Pending", 30, false},
 		{"unknown", "Unknown", "2026-11-03T12:00:00Z", "Pending", 30, false},
 		{"warning", "True", "2026-10-19T12:00:00Z", "Warning", 15, true},
 		{"truncated boundary", "False", "2026-10-20T11:59:59Z", "Warning", 15, false},
 		{"sixteen days", "True", "2026-10-20T12:00:00Z", "Healthy", 16, true},
-		{"expires now", "True", "2026-10-04T12:00:00Z", "Expired", 0, true},
+		{"expires now", "True", "2026-10-04T12:00:00Z", "Expired", 0, false},
 		{"expired fraction", "False", "2026-10-04T11:59:59Z", "Expired", 0, false},
-		{"expired", "True", "2026-10-02T12:00:00Z", "Expired", -2, true},
-		{"invalid", "True", "invalid", "Expired", (time.Time{}.Unix() - now.Unix()) / 86400, true},
+		{"expired", "True", "2026-10-02T12:00:00Z", "Expired", -2, false},
+		{"invalid", "True", "invalid", "Expired", 0, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cert := map[string]interface{}{"status": map[string]interface{}{
-				"conditions": []interface{}{map[string]interface{}{"type": "Ready", "status": tc.condition}},
+				"conditions": []interface{}{map[string]interface{}{"type": "Ready", "status": tc.condition, "observedGeneration": int64(1)}},
 				"notAfter":   tc.expiry,
-			}}
+			}, "metadata": map[string]interface{}{"generation": int64(1)}}
 			want := v1alpha1.CertificateStatus{
 				Ready: tc.ready, Health: tc.health, DaysRemaining: tc.days, NotAfter: tc.expiry,
 			}
@@ -78,7 +78,7 @@ func TestRunFunction(t *testing.T) {
 			}
 			if withCertificate {
 				req.Observed.Resources = map[string]*fnv1.Resource{"certificate": {Resource: resource.MustStructJSON(`{
-					"status":{"notAfter":"2026-11-03T12:00:00Z","conditions":[{"type":"Ready","status":"True"}]}}`)}}
+					"metadata":{"generation":1},"status":{"notAfter":"2026-11-03T12:00:00Z","conditions":[{"type":"Ready","status":"True","observedGeneration":1}]}}`)}}
 			}
 			before := proto.Clone(req)
 			f := &Function{now: func() time.Time { return time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC) }}
@@ -92,8 +92,8 @@ func TestRunFunction(t *testing.T) {
 			if rsp.Meta.Tag != "test" || !proto.Equal(req.Desired.Resources["other"], rsp.Desired.Resources["other"]) {
 				t.Fatal("incoming state lost")
 			}
-			if rsp.Desired.Composite.Ready != fnv1.Ready_READY_TRUE {
-				t.Fatal("incoming composite readiness lost")
+			if rsp.Desired.Composite.Ready != fnv1.Ready_READY_UNSPECIFIED {
+				t.Fatal("function must let Crossplane derive composite readiness")
 			}
 			cert := rsp.Desired.Resources["certificate"].Resource.AsMap()
 			wantCert := resource.MustStructJSON(`{"apiVersion":"cert-manager.io/v1","kind":"Certificate","metadata":{"name":"demo-custom","namespace":"apps"},"spec":{"secretName":"demo-custom-tls","dnsNames":["app-custom.mujak.com"],"issuerRef":{"name":"letsencrypt-prod","kind":"ClusterIssuer","group":"cert-manager.io"}}}`).AsMap()
@@ -117,10 +117,103 @@ func TestRunFunction(t *testing.T) {
 			if diff := cmp.Diff(map[string]interface{}{"other": "preserved", "certificate": wantStatus}, gotStatus); diff != "" {
 				t.Fatal(diff)
 			}
-			if rsp.Desired.Resources["certificate"].Ready != fnv1.Ready_READY_UNSPECIFIED {
-				t.Fatal("must not add auto-ready behavior")
+		}
+	}
+}
+
+func TestComposedReadinessRequestResponseTransitions(t *testing.T) {
+	now := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	newRequest := func(cert, ingress string) *fnv1.RunFunctionRequest {
+		req := &fnv1.RunFunctionRequest{
+			Observed: &fnv1.State{Composite: &fnv1.Resource{Resource: resource.MustStructJSON(observedCompositeJSON)}},
+		}
+		if cert != "" || ingress != "" {
+			req.Observed.Resources = map[string]*fnv1.Resource{}
+			if cert != "" {
+				req.Observed.Resources["certificate"] = &fnv1.Resource{Resource: resource.MustStructJSON(cert)}
+			}
+			if ingress != "" {
+				req.Observed.Resources["ingress"] = &fnv1.Resource{Resource: resource.MustStructJSON(ingress)}
 			}
 		}
+		return req
+	}
+	readyCert := `{"metadata":{"generation":2,"annotations":{"crossplane.io/composition-resource-name":"certificate"}},"status":{"notAfter":"2026-11-03T12:00:00Z","conditions":[{"type":"Ready","status":"True","observedGeneration":2}]}}`
+	readyIngress := `{"metadata":{"annotations":{"crossplane.io/composition-resource-name":"ingress"}},"spec":{"tls":[{"hosts":["app-custom.mujak.com"],"secretName":"demo-custom-tls"}],"rules":[{"host":"app-custom.mujak.com","http":{"paths":[{"path":"/","pathType":"Prefix","backend":{"service":{"name":"app","port":{"number":8080}}}}]}}]},"status":{"loadBalancer":{"ingress":[]}}}`
+	cases := []struct {
+		name        string
+		cert        string
+		ingress     string
+		wantCert    bool
+		wantIngress bool
+	}{
+		{"resources absent", "", "", false, false},
+		{"certificate observed but ingress absent", readyCert, "", true, false},
+		{"ingress observed but certificate absent", "", readyIngress, false, true},
+		{"both observed and matching", readyCert, readyIngress, true, true},
+		{"near expiry remains ready", strings.Replace(readyCert, `"notAfter":"2026-11-03T12:00:00Z"`, `"notAfter":"2026-10-19T12:00:00Z"`, 1), readyIngress, true, true},
+		{"certificate becomes stale", strings.Replace(readyCert, `"observedGeneration":2`, `"observedGeneration":1`, 1), readyIngress, false, true},
+		{"certificate observed generation missing", strings.Replace(readyCert, `,"observedGeneration":2`, "", 1), readyIngress, false, true},
+		{"certificate condition false", strings.Replace(readyCert, `"status":"True"`, `"status":"False"`, 1), readyIngress, false, true},
+		{"certificate condition unknown", strings.Replace(readyCert, `"status":"True"`, `"status":"Unknown"`, 1), readyIngress, false, true},
+		{"certificate expiry missing", strings.Replace(readyCert, `"notAfter":"2026-11-03T12:00:00Z",`, "", 1), readyIngress, false, true},
+		{"certificate expiry invalid", strings.Replace(readyCert, `"notAfter":"2026-11-03T12:00:00Z"`, `"notAfter":"invalid"`, 1), readyIngress, false, true},
+		{"certificate expired", strings.Replace(readyCert, `"notAfter":"2026-11-03T12:00:00Z"`, `"notAfter":"2026-10-04T12:00:00Z"`, 1), readyIngress, false, true},
+		{"ingress drifts after ready", readyCert, strings.Replace(readyIngress, `"name":"app"`, `"name":"other"`, 1), true, false},
+		{"equivalent numeric port", readyCert, strings.Replace(readyIngress, `"number":8080`, `"number":8080.0`, 1), true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := newRequest(tc.cert, tc.ingress)
+			// Seed true to ensure the function does not preserve an override.
+			req.Desired = &fnv1.State{Composite: &fnv1.Resource{Ready: fnv1.Ready_READY_TRUE}}
+			rsp, err := (&Function{now: func() time.Time { return now }}).RunFunction(context.Background(), req)
+			if err != nil || len(rsp.Results) != 0 {
+				t.Fatalf("err=%v results=%v", err, rsp.Results)
+			}
+			if rsp.Desired.Composite.Ready != fnv1.Ready_READY_UNSPECIFIED {
+				t.Fatalf("composite readiness = %v, want unspecified", rsp.Desired.Composite.Ready)
+			}
+			for _, item := range []struct {
+				key   string
+				ready bool
+			}{{"certificate", tc.wantCert}, {"ingress", tc.wantIngress}} {
+				want := fnv1.Ready_READY_FALSE
+				if item.ready {
+					want = fnv1.Ready_READY_TRUE
+				}
+				if got := rsp.Desired.Resources[item.key].Ready; got != want {
+					t.Errorf("%s readiness = %v, want %v", item.key, got, want)
+				}
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name, requested string
+		want            fnv1.Ready
+	}{
+		{"admission default accepted", "", fnv1.Ready_READY_TRUE},
+		{"requested class matches", "nginx", fnv1.Ready_READY_TRUE},
+		{"requested class differs", "haproxy", fnv1.Ready_READY_FALSE},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			xr := resource.MustStructJSON(observedCompositeJSON)
+			if tc.requested != "" {
+				xr.Fields["spec"].GetStructValue().Fields["ingress"].GetStructValue().Fields["className"] = resource.MustStructJSON(fmt.Sprintf(`{"value":%q}`, tc.requested)).Fields["value"]
+			}
+			ingressObj := resource.MustStructJSON(readyIngress).AsMap()
+			if err := unstructured.SetNestedField(ingressObj, "nginx", "spec", "ingressClassName"); err != nil {
+				t.Fatal(err)
+			}
+			req := &fnv1.RunFunctionRequest{Observed: &fnv1.State{
+				Composite: &fnv1.Resource{Resource: xr},
+				Resources: map[string]*fnv1.Resource{"certificate": {Resource: resource.MustStructJSON(readyCert)}, "ingress": {Resource: resource.MustStructObject(&unstructured.Unstructured{Object: ingressObj})}},
+			}}
+			rsp, err := (&Function{now: func() time.Time { return now }}).RunFunction(context.Background(), req)
+			if err != nil || len(rsp.Results) != 0 || rsp.Desired.Resources["ingress"].Ready != tc.want {
+				t.Fatalf("err=%v results=%v ingress readiness=%v want=%v", err, rsp.Results, rsp.Desired.Resources["ingress"].Ready, tc.want)
+			}
+		})
 	}
 }
 
