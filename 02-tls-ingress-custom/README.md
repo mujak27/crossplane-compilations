@@ -136,6 +136,15 @@ The package is a Crossplane xpkg with its runtime embedded; no separate runtime
 or composition definitions release is required. Composition definition pins
 remain unchanged.
 
+Release record for `v0.1.2`:
+
+- Release commit: `c5623438dfbbf35ff50fd79612d64fe9996bf69f`
+- Package: `ghcr.io/mujak27/function-tls-ingress:v0.1.2`
+- Package digest: `sha256:b6feffca55f78a2a317cb8431d0eaafab2609137a813ac8719fd12590bb2d2d6`
+- Architecture: `linux/amd64`
+- Verification: the package was pulled anonymously from GHCR and inspected;
+  release workflow run [38611128462](https://github.com/mujak27/crossplane-compilations/actions/runs/38611128462) succeeded.
+
 Publishing uses the repository's automatic `GITHUB_TOKEN` with `packages: write`
 only in the release job; no PAT or additional repository secret is required.
 The runtime image is embedded, not published separately. The final package
