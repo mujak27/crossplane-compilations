@@ -116,14 +116,25 @@ update its version and linux/amd64 SHA256 in the workflow.
 - Pushing `function-tls-ingress-vMAJOR.MINOR.PATCH` publishes the tested package
   to `ghcr.io/mujak27/function-tls-ingress:vMAJOR.MINOR.PATCH`.
 
-After merging the workflow, release from the repository root:
+The readiness-enabled release is planned as `v0.1.2`. The existing immutable
+versions `v0.1.0` and `v0.1.1` must not be overwritten. Before release, verify
+that neither the Git tag nor the GHCR package version already exists. Obtain
+maintainer approval before the following publishing trigger; pushing this tag
+starts the workflow's build and GHCR publish jobs from that exact commit:
 
 ```sh
-git switch main
-git pull --ff-only
-git tag function-tls-ingress-v0.1.0
-git push origin function-tls-ingress-v0.1.0
+git tag function-tls-ingress-v0.1.2 <approved-release-commit>
+git push origin function-tls-ingress-v0.1.2
 ```
+
+The release commit must contain this runtime pin and documentation update as
+well as the merged readiness implementation. Do not move or recreate a release
+tag, or reuse a published package version. Record the release commit, package
+digest, and supported architecture (currently `linux/amd64`) after the workflow
+succeeds and verify that the versioned package is pullable by the cluster.
+The package is a Crossplane xpkg with its runtime embedded; no separate runtime
+or composition definitions release is required. Composition definition pins
+remain unchanged.
 
 Publishing uses the repository's automatic `GITHUB_TOKEN` with `packages: write`
 only in the release job; no PAT or additional repository secret is required.
@@ -140,8 +151,9 @@ before publishing. Public visibility lets Crossplane pull without credentials.
 GHCR container storage and bandwidth are currently free; standard GitHub-hosted
 Actions runners are free for this public repository.
 
-`functions.yaml` references `v0.1.0`; it cannot be installed until that release
-has been published and made public. Update the reference for later releases.
+`functions.yaml` references `v0.1.2`; it cannot be installed until that release
+has been published and made public. Keep the reference pinned to the immutable
+version (do not use `latest`).
 The Development annotations remain for local rendering only. For a cluster
 smoke test after publishing:
 
@@ -164,7 +176,7 @@ crossplane xpkg build --package-root function/package \
   --embed-runtime-image function-tls-ingress:runtime \
   --package-file function/function-tls-ingress.xpkg
 crossplane xpkg push --package-files function/function-tls-ingress.xpkg \
-  registry.example.com/your-org/function-tls-ingress:v0.1.0
+  registry.example.com/your-org/function-tls-ingress:v0.1.2
 ```
 
 Update `spec.package` in `functions.yaml` to that published package before
