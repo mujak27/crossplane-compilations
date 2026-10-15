@@ -30,6 +30,55 @@ spec:
             {{- $hostname := $xr.spec.hostname -}}
             {{- $secretName := printf "%s-tls" $name -}}
 
+            {{- $cert := getComposedResource . "certificate" | default dict -}}
+            {{- $certStatus := $cert.status | default dict -}}
+            {{- $certMetadata := $cert.metadata | default dict -}}
+            {{- $readyCondition := getResourceCondition "Ready" $cert -}}
+            {{- $current := false -}}
+            {{- $found := false -}}
+            {{- range ($certStatus.conditions | default list) -}}
+              {{- if and (not $found) (eq .type "Ready") -}}
+                {{- $found = true -}}
+                {{- $current = and (not (empty $certMetadata.generation)) (not (empty .observedGeneration)) (eq (toJson $certMetadata.generation) (toJson .observedGeneration)) -}}
+              {{- end -}}
+            {{- end -}}
+
+            {{- $ready := false -}}
+            {{- $health := "Pending" -}}
+            {{- $notAfter := $certStatus.notAfter | default "" -}}
+            {{- $daysRemaining := 0 -}}
+            {{- if $notAfter -}}
+              {{- $expiry := toDate "2006-01-02T15:04:05.999999999Z07:00" $notAfter -}}
+              {{- $now := now -}}
+              {{- $secondsRemaining := sub ($expiry.Unix) ($now.Unix) -}}
+              {{- $daysRemaining = div $secondsRemaining 86400 -}}
+              {{- $ready = and $current (eq $readyCondition.Status "True") ($expiry.After $now) -}}
+              {{- if not ($expiry.After $now) -}}
+                {{- $health = "Expired" -}}
+              {{- else if le $daysRemaining 15 -}}
+                {{- $health = "Warning" -}}
+              {{- else if $ready -}}
+                {{- $health = "Healthy" -}}
+              {{- end -}}
+            {{- end -}}
+
+            {{- $backend := dict "service" (dict "name" $xr.spec.ingress.serviceName "port" (dict "number" $xr.spec.ingress.servicePort)) -}}
+            {{- $paths := list (dict "path" "/" "pathType" "Prefix" "backend" $backend) -}}
+            {{- $rules := list (dict "host" $hostname "http" (dict "paths" $paths)) -}}
+            {{- $tls := list (dict "hosts" (list $hostname) "secretName" $secretName) -}}
+            {{- $ingressSpec := dict "rules" $rules "tls" $tls -}}
+            {{- $class := $xr.spec.ingress.className | default "" -}}
+            {{- if $class -}}
+              {{- $_ := set $ingressSpec "ingressClassName" $class -}}
+            {{- end -}}
+            {{- $ingress := getComposedResource . "ingress" | default dict -}}
+            {{- $observedSpec := $ingress.spec | default dict -}}
+            {{- /* JSON comparison preserves full rules/TLS shape and normalizes integral numeric values. */ -}}
+            {{- $ingressReady := and (eq (toJson $observedSpec.rules) (toJson $rules)) (eq (toJson $observedSpec.tls) (toJson $tls)) -}}
+            {{- if $class -}}
+              {{- $ingressReady = and $ingressReady (eq $observedSpec.ingressClassName $class) -}}
+            {{- end -}}
+
             ---
             apiVersion: cert-manager.io/v1
             kind: Certificate
@@ -38,6 +87,9 @@ spec:
               namespace: {{ $namespace }}
               annotations:
                 gotemplating.fn.crossplane.io/composition-resource-name: certificate
+                {{- if $ready }}
+                gotemplating.fn.crossplane.io/ready: "True"
+                {{- end }}
 
             spec:
               secretName: {{ $secretName }}
@@ -59,82 +111,15 @@ spec:
 
               annotations:
                 gotemplating.fn.crossplane.io/composition-resource-name: ingress
-
-                {{- $cert := getComposedResource . "certificate" }}
-
-                {{- if $cert }}
-                {{- with $cert.status.notAfter }}
-                platform.mujak.com/cert-not-after: {{ . | quote }}
+                {{- if $ingressReady }}
+                gotemplating.fn.crossplane.io/ready: "True"
                 {{- end }}
+                {{- if $notAfter }}
+                platform.mujak.com/cert-not-after: {{ $notAfter | quote }}
                 {{- end }}
 
             spec:
-              ingressClassName: {{ $xr.spec.ingress.className }}
-
-              tls:
-                - hosts:
-                    - {{ $hostname }}
-
-                  secretName: {{ $secretName }}
-
-              rules:
-                - host: {{ $hostname }}
-
-                  http:
-                    paths:
-                      - path: /
-                        pathType: Prefix
-
-                        backend:
-                          service:
-                            name: {{ $xr.spec.ingress.serviceName }}
-
-                            port:
-                              number: {{ $xr.spec.ingress.servicePort }}
-
-
-            {{- $cert := getComposedResource . "certificate" }}
-
-            {{- $ready := false }}
-            {{- $health := "Pending" }}
-            {{- $notAfter := "" }}
-            {{- $daysRemaining := 0 }}
-
-            {{- if $cert }}
-
-              {{- $readyCondition := getResourceCondition "Ready" $cert }}
-
-              {{- if and $readyCondition (eq $readyCondition.Status "True") }}
-                {{- $ready = true }}
-              {{- end }}
-
-              {{- with $cert.status.notAfter }}
-
-                {{- $notAfter = . }}
-
-                {{- $expiry := toDate "2006-01-02T15:04:05Z" $notAfter }}
-                {{- $now := now }}
-
-                {{- $secondsRemaining := sub ($expiry.Unix) ($now.Unix) }}
-                {{- $daysRemaining = div $secondsRemaining 86400 }}
-
-                {{- if le $secondsRemaining 0 }}
-                  {{- $health = "Expired" }}
-
-                {{- else if le $daysRemaining 15 }}
-                  {{- $health = "Warning" }}
-
-                {{- else if $ready }}
-                  {{- $health = "Healthy" }}
-
-                {{- else }}
-                  {{- $health = "Pending" }}
-
-                {{- end }}
-
-              {{- end }}
-
-            {{- end }}
+              {{- $ingressSpec | toYaml | nindent 2 }}
 
             ---
             apiVersion: platform.mujak.com/v1alpha1
