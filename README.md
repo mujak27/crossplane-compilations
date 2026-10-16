@@ -5,6 +5,13 @@ complex configuration behind its custom resource
 - [01-tls-ingress](01-tls-ingress): TLS Ingress using inline Go templates.
 - [02-tls-ingress-custom](02-tls-ingress-custom): the same behavior in a custom Go composition function.
 
+## Creating a function
+
+In OpenCode, invoke `@create-crossplane-function` to grill the design, review an
+implementation plan, and publish approved GitHub tickets. The project-local
+[skill](.opencode/skills/create-crossplane-function/SKILL.md) waits for an explicit
+dispatch request before starting child implementation agents.
+
 ## Naming and installation
 
 Each project has a stable ID without its numeric folder prefix:
