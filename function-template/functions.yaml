@@ -1,0 +1,11 @@
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-template
+  annotations:
+    render.crossplane.io/runtime: Development
+    render.crossplane.io/runtime-development-target: localhost:9443
+spec:
+  # Placeholder only: replace with your own published package before installing.
+  # Local development rendering does not pull this package.
+  package: registry.example.org/your-org/function-template:replace-me

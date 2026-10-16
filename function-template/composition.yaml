@@ -1,0 +1,13 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: function-template.template.example.org
+spec:
+  compositeTypeRef:
+    apiVersion: template.example.org/v1alpha1
+    kind: XExample
+  mode: Pipeline
+  pipeline:
+    - step: render
+      functionRef:
+        name: function-template
