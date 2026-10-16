@@ -1,0 +1,10 @@
+apiVersion: template.example.org/v1alpha1
+kind: XExample
+metadata:
+  name: function-template-example
+  namespace: default
+spec:
+  crossplane:
+    compositionRef:
+      name: function-template.template.example.org
+  message: Hello from the function template!

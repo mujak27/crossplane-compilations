@@ -4,6 +4,7 @@ complex configuration behind its custom resource
 
 - [01-tls-ingress](01-tls-ingress): TLS Ingress using inline Go templates.
 - [02-tls-ingress-custom](02-tls-ingress-custom): the same behavior in a custom Go composition function.
+- [function-template](function-template): an unnumbered, provider-independent custom Go function starter with generated schemas and a namespaced ConfigMap example.
 
 ## Naming and installation
 
@@ -13,6 +14,7 @@ Each project has a stable ID without its numeric folder prefix:
 | --- | --- | --- | --- |
 | `tls-ingress` | `XIngressTLS` | `xingresstls.platform.mujak.com` | `xingresstls.platform.mujak.com` |
 | `tls-ingress-custom` | `XIngressTLSCustom` | `xingresstlscustom.platform.mujak.com` | `xingresstls-custom.platform.mujak.com` |
+| `function-template` | `XExample` | `xexamples.template.example.org` | `function-template.template.example.org` |
 
 - Independent APIs must have unique group/plural pairs and distinct kinds in this
   collection. An XRD name is always `<plural>.<group>`. Composition type references
@@ -39,6 +41,7 @@ shared dependencies can have one owner:
 ```sh
 kubectl kustomize 01-tls-ingress
 kubectl kustomize 02-tls-ingress-custom
+kubectl kustomize function-template
 ```
 
 Definitions releases use immutable `<project-id>-vMAJOR.MINOR.PATCH` tags,

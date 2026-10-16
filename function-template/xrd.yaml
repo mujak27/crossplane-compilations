@@ -1,0 +1,32 @@
+# Generated from function/api/v1alpha1/types.go; DO NOT EDIT.
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: xexamples.template.example.org
+spec:
+  scope: Namespaced
+  group: template.example.org
+  names:
+    kind: XExample
+    plural: xexamples
+    singular: xexample
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        description: XExample composes a namespaced ConfigMap.
+        properties:
+          spec:
+            description: XExampleSpec is the desired message.
+            properties:
+              message:
+                description: Message is copied into the composed ConfigMap.
+                type: string
+            required:
+            - message
+            type: object
+        required:
+        - spec
+        type: object
