@@ -1,125 +1,88 @@
 ---
 name: create-crossplane-function
-description: Design a new Crossplane function, approve its plan, and publish implementation tickets; dispatch child agents only on request.
+description: Crossplane design, template scaffolding, and validation requirements to use alongside plan-to-tickets.
 disable-model-invocation: true
 ---
 
 # Create Crossplane Function
 
-Coordinate the existing skills rather than repeating their workflows. Default to
-design and tickets, not implementation. Resume from the last approved checkpoint;
-check existing plans, issues, and worktrees before creating duplicates.
+Use this skill as the Crossplane domain supplement to `plan-to-tickets`, not a
+second orchestrator. Apply its requirements at the corresponding coordinator
+stages and carry them into the approved plan, tickets, and worker context.
 
-## 1. Establish context and workspace
+## Coordinator handoff
 
-- Read the repository and ancestor `AGENTS.md` files, `docs/agents/domain.md`,
-  the glossary and relevant ADRs when present, `docs/agents/issue-tracker.md`,
-  `docs/agents/triage-labels.md`, and the root README's naming conventions.
-  Repository paths here are relative to the Git root, not this skill directory.
-- Establish the proposed function's purpose and a short filesystem-safe slug.
-  Inspect the existing examples and `function-template/` without modifying them.
-- Resolve the original checkout with Git worktree metadata. Use its sibling
-  `<repository>-worktrees/<function-slug>` directory and a task branch. For this
-  repository that container is `crossplane-compilations-worktrees/`, not a nested
-  directory and not the singular `-worktree` suffix.
-- Before creating a worktree, fetch `origin main`; stop on failure. Create the
-  new branch from updated `origin/main` and move the session into the worktree
-  before any file edits, including glossary or ADR updates. Use an explicit
-  `git worktree add` destination if the worktree tool cannot honor this location.
-- Reuse an existing worktree only for continuation of this same function task,
-  after inspecting its branch and changes. Preserve unfamiliar changes. If the
-  starting checkout has another task's uncommitted work or an open PR, offer
-  `session.moveToWorktree` and wait for approval unless the user already explicitly
-  requested a worktree. Configure the destination to honor the sibling convention.
+Ask the user to invoke `@plan-to-tickets` alongside this skill if it is not
+already active for the task. Both skills are user-invoked; reading an installed
+skill file is inspection, not permission to execute it. If the coordinator is
+missing or cannot be invoked, report the blocker and wait rather than substituting
+an inline workflow. It is supplied by `mujak27/skills`.
 
-Done when the function's context is understood and the session has a safe task
-workspace. The primary checkout and other sessions' worktrees remain untouched.
+`plan-to-tickets` owns dependency preflight, companion-skill invocation, session
+placement and anchoring, delegation boundaries, approval gates, ticket publication,
+implementation authorization, TDD, review, and result tracking. Follow its
+workspace policy subject to repository and harness instructions. This supplement
+adds no session moves or dispatch permissions. In particular, a function's ticket
+worktrees are not new parent locations or reasons for top-level sessions.
 
-## 2. Grill with docs
+Proceed when the user has invoked the coordinator and its preflight and initial
+placement requirements are satisfied. Resume its existing checkpoint rather than
+starting a duplicate design, plan, or ticket set.
 
-Load `grill-with-docs`, which composes `grilling` and `domain-modeling`. If the
-router is unavailable to the skill tool, read its installed `SKILL.md` and load
-those two skills directly. Use their frontier rounds, recommended answers, and
-approval rules; investigate facts rather than asking the user to look them up.
+## Context and design requirements
 
-Cover the function's behavior, typed XR contract, API identity and project
-directory, composed resources, namespace and naming rules, desired-state
-preservation, errors, readiness semantics, test seams, and explicit non-goals.
-Adapt questions to the actual function rather than asking an invariant checklist.
-Record resolved domain terms and qualifying ADRs using domain-modeling.
+At context discovery, read repository and ancestor `AGENTS.md`,
+`docs/agents/domain.md`, the glossary and relevant ADRs when present,
+`docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, and the root README's
+naming conventions. These paths are relative to the Git root. Inspect the existing
+examples and `function-template/` without modifying them; establish the function's
+purpose and a short filesystem-safe slug.
 
-Apply the repository's Crossplane v2 namespaced guardrails throughout. Distinguish
-namespaced resource instances from inherently cluster-scoped infrastructure
-definitions. Use the template's typed Go → CRD → XRD generation pipeline rather
-than hand-editing generated XRDs.
+During the coordinator's design stage, resolve the function's behavior, typed XR
+contract, API identity and project directory, composed resources, namespace and
+naming rules, desired-state preservation, errors, readiness semantics, test seams,
+and explicit non-goals. Adapt questions to the actual function. Distinguish
+provisioning readiness from application health as defined in the glossary.
 
-Done only when the design frontier is empty and the user confirms shared
-understanding. Approval of one round does not approve unanswered branches.
+Apply the repository's Crossplane v2 namespaced guardrails throughout. Keep
+composed resources in the XR namespace and distinguish namespaced instances from
+inherently cluster-scoped infrastructure definitions. Use the template's typed
+Go → CRD → XRD generation pipeline rather than hand-editing generated XRDs.
 
-## 3. Save and approve the plan
+Design coverage is complete when these decisions are resolved and recorded under
+the coordinator's design approval gate.
 
-Save the implementation plan in OpenChamber Project knowledge, with a title,
-coarse step checklist, approved decisions, acceptance checks, template dependency,
-and non-goals. Show it for review and wait for plan approval. Keep temporary
-research or handoff files in the ancestor instructions' ephemeral-doc location.
-Do not scaffold the function at this stage.
+## Plan and ticket requirements
+
+Include the approved Crossplane decisions, template dependency, acceptance checks,
+and non-goals in the coordinator's plan and relevant tickets. Make the first
+implementation slice scaffold from the approved template and deliver a minimal
+working path for the function.
 
 The template is ready only when its implementation is merged into `main` and
-its generation, tests, drift checks, and local render checks pass. Inspect current
-template issues and merged changes; ticket closure alone is insufficient. Never
-copy another session's uncommitted template. If unavailable, planning and ticket
-publication may continue, but mark scaffolding blocked by template readiness and
-report the dependency. Record missing or failed checks honestly.
+generation, tests, drift checks, and local render checks pass. Verify implementation
+commits and actual checks, not ticket closure alone. Use the freshly fetched task
+baseline, preserving the repository's worktree rules; never copy another session's
+uncommitted template. If unavailable, planning and ticket publication may continue,
+but mark scaffolding blocked by template readiness and report the evidence.
 
-Done when the saved plan has explicit user approval.
+For template-readiness checks and scaffolding acceptance criteria, read
+[Template integration](references/template-integration.md). Carry its generated-
+artifact commit ordering and namespace checks into the scaffolding ticket.
 
-## 4. Approve and publish tickets
+These requirements are accounted for when every relevant plan constraint has an
+owning ticket and unavailable prerequisites have explicit blocking dependencies.
+Use the coordinator's approval and publication gates, not an additional set here.
 
-Load `to-tickets` (or read its installed `SKILL.md` if unavailable to the tool).
-Draft verifiable vertical slices with acceptance criteria and genuine blocking
-edges. Make the first implementation slice scaffold from the approved template
-and deliver a minimal working path for this function. Carry every plan constraint
-into the relevant tickets, including template-readiness blockers.
+## Authorized implementation requirements
 
-Present the numbered breakdown and wait for separate breakdown approval before
-publishing. Publish to this repository's GitHub Issues with the configured
-`ready-for-agent` label and native blocking relationships, using the documented
-fallback when native relationships are unavailable. Blocked tickets remain
-ineligible for dispatch regardless of their label. Preserve existing parent
-issues and link tickets to the approved plan or a durable decision summary.
+When implementation is explicitly requested through the coordinator, give each
+assigned worker the Crossplane decisions and template-integration requirements
+with its ticket context. Keep the template and existing numbered examples
+unchanged unless the approved scope includes them.
 
-As soon as an issue or change becomes part of this work, link it to the session
-with OpenChamber `session.link`; do the same for issues or PRs created or resolved.
-
-Done when approved tickets exist, their dependencies are recorded, and the user
-has their links. **Stop here unless the user explicitly requests dispatch.**
-Ticket or plan approval alone does not authorize implementation agents.
-
-## 5. Dispatch only on request
-
-Use native child subagents attached to this session, not independent top-level
-sessions. Dispatch only tickets whose blockers are complete and verified,
-including template readiness. Claim tickets per the tracker conventions.
-
-- Sequential implementation uses the function's worktree with one writer at a
-  time. Parallel file-changing tickets each use an isolated ticket worktree in
-  the same sibling container. Parallelize only genuinely independent work.
-- New ticket branches also start from freshly fetched `origin/main`. Before
-  dispatch, integrate the required verified prerequisite commits into the target
-  branch; an issue marked closed does not put its code in a worktree. Stop and
-  report conflicts instead of overwriting changes.
-- Give each child the issue body/comments, relevant approved decisions, exact
-  worktree and branch, prerequisite commits, scope, and acceptance checks. Require
-  it to work only there and return its commits, actual validation results, and
-  unresolved blockers. Use `tdd` at agreed test seams where appropriate.
-- Require `code-review` before completion, resolve actionable findings, and keep
-  tested implementation commits local. Pushes, PR creation, merges, package
-  publication, and cluster deployment require an explicit user request.
-- Verify returned work against acceptance criteria before resolving its ticket
-  and unblocking dependents. Integrate isolated ticket commits serially into the
-  function branch and rerun relevant combined checks. Tick approved plan steps as
-  completed without rewriting their constraints.
-
-Finish with the function branch/worktree, completed and remaining issues,
-validation results, and blockers. Leave an unfinished ticket open with a clear
-status; do not claim checks ran when tools were unavailable.
+Verify actual generation, tests, drift, render, API identity, namespace isolation,
+and chosen readiness behavior before accepting the function. Package builds,
+publishing, and cluster deployment are separate from local render validation and
+remain subject to explicit authorization. Return validation evidence and blockers
+to the coordinator; it owns review, integration, ticket completion, and reporting.

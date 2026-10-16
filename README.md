@@ -8,10 +8,11 @@ complex configuration behind its custom resource
 
 ## Creating a function
 
-In OpenCode, invoke `@create-crossplane-function` to grill the design, review an
-implementation plan, and publish approved GitHub tickets. The project-local
-[skill](.opencode/skills/create-crossplane-function/SKILL.md) waits for an explicit
-dispatch request before starting child implementation agents.
+In OpenCode, invoke `@plan-to-tickets` and `@create-crossplane-function` together.
+Install `plan-to-tickets` from `mujak27/skills` if needed; it coordinates worktree
+placement, approvals, tickets, and explicitly requested implementation. The
+project-local [Crossplane skill](.opencode/skills/create-crossplane-function/SKILL.md)
+supplies domain constraints, template scaffolding, and validation requirements.
 
 ## Naming and installation
 
