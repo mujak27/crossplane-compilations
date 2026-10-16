@@ -8,11 +8,13 @@ complex configuration behind its custom resource
 
 ## Creating a function
 
-In OpenCode, invoke `@plan-to-tickets` and `@create-crossplane-function` together.
-Install `plan-to-tickets` from `mujak27/skills` if needed; it coordinates worktree
-placement, approvals, tickets, and explicitly requested implementation. The
-project-local [Crossplane skill](.opencode/skills/create-crossplane-function/SKILL.md)
-supplies domain constraints, template scaffolding, and validation requirements.
+In OpenCode, invoke `@create-crossplane-function`. The project-local
+[Crossplane skill](.opencode/skills/create-crossplane-function/SKILL.md) automatically
+loads `plan-to-tickets` for worktree placement, approvals, tickets, and explicitly
+requested implementation, while supplying domain, template, and validation
+requirements. Install or update `plan-to-tickets` from `mujak27/skills` first;
+older user-only versions cannot be loaded automatically. Approval gates remain
+unchanged, including explicit invocation of user-only companion skills when prompted.
 
 ## Naming and installation
 
