@@ -1,6 +1,6 @@
 ---
 name: create-crossplane-function
-description: Crossplane design, template scaffolding, and validation requirements to use alongside plan-to-tickets.
+description: Create a Crossplane function with automatic plan-to-tickets coordination and project-specific design, template, and validation requirements.
 disable-model-invocation: true
 ---
 
@@ -12,11 +12,17 @@ stages and carry them into the approved plan, tickets, and worker context.
 
 ## Coordinator handoff
 
-Ask the user to invoke `@plan-to-tickets` alongside this skill if it is not
-already active for the task. Both skills are user-invoked; reading an installed
-skill file is inspection, not permission to execute it. If the coordinator is
-missing or cannot be invoked, report the blocker and wait rather than substituting
-an inline workflow. It is supplied by `mujak27/skills`.
+When the user invokes this skill, automatically load `plan-to-tickets` through
+the harness's skill tool unless it is already active for this task. In OpenCode,
+call `skill` with `{"id":"plan-to-tickets"}`. The coordinator is supplied by
+`mujak27/skills` and must permit model invocation. If missing, still marked
+user-only, or blocked by permissions, report the precise blocker and wait for an
+update or permitted invocation; reading its file is not an execution fallback.
+
+Pass this supplement's Crossplane and template requirements into the coordinator's
+workflow. Automatic loading preserves all approval gates and does not authorize
+ticket publication, implementation, or dispatch. User-only companion skills such
+as `to-tickets` still require user invocation when the coordinator requests it.
 
 `plan-to-tickets` owns dependency preflight, companion-skill invocation, session
 placement and anchoring, delegation boundaries, approval gates, ticket publication,
@@ -25,7 +31,7 @@ workspace policy subject to repository and harness instructions. This supplement
 adds no session moves or dispatch permissions. In particular, a function's ticket
 worktrees are not new parent locations or reasons for top-level sessions.
 
-Proceed when the user has invoked the coordinator and its preflight and initial
+Proceed when the coordinator is active and its preflight and initial
 placement requirements are satisfied. Resume its existing checkpoint rather than
 starting a duplicate design, plan, or ticket set.
 
