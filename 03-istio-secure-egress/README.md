@@ -29,6 +29,13 @@ make render
 kubectl kustomize .
 ```
 
+The [Istio secure egress workflow](../.github/workflows/istio-secure-egress.yaml)
+runs these checks on GitHub-hosted Ubuntu runners for relevant pull requests and
+pushes to `main`, or manually. It includes Go/Python tests, uncached race tests,
+vet, repeated generation with committed-drift checks, native builds, both profile
+renders, pending/matching readiness assertions, and definitions-only Kustomize.
+It does not publish packages, deploy resources, or verify live traffic/TLS.
+
 `make render` starts a native function on localhost:9443 and refuses an occupied
 port. It supplies `examples/environmentconfig.yaml` through `--required-resources`
 and renders the `team-a/istio-secure-egress-demo` XR. `XR` and `PROFILE` environment
