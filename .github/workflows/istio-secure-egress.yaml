@@ -1,0 +1,124 @@
+name: Istio secure egress
+
+on:
+  pull_request:
+    paths:
+      - '03-istio-secure-egress/**'
+      - '.github/workflows/istio-secure-egress.yaml'
+  push:
+    branches: [main]
+    paths:
+      - '03-istio-secure-egress/**'
+      - '.github/workflows/istio-secure-egress.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: '1.27.1'
+  CROSSPLANE_VERSION: 'v2.5.0'
+  CROSSPLANE_SHA256: '065dd6b40c9ea5fc71e49900d5c924cc0bec7f58375922ddbde6b402f292347e'
+  KUBECTL_VERSION: 'v1.37.1'
+
+defaults:
+  run:
+    shell: bash
+    working-directory: 03-istio-secure-egress
+
+jobs:
+  test:
+    name: Test, generate and render
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: 03-istio-secure-egress/function/go.sum
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv function/.venv
+          function/.venv/bin/python -m pip install -r function/requirements.txt
+
+      - name: Go and Python tests (including provisioning readiness)
+        run: make test
+
+      - name: Uncached race tests and vet
+        working-directory: 03-istio-secure-egress/function
+        run: |
+          go test -race -count=1 ./...
+          go vet ./...
+
+      - name: Deterministic generation and committed drift checks
+        run: |
+          make generate
+          make check-generated
+
+      - name: Install render and Kustomize CLIs
+        run: |
+          curl --fail --silent --show-error --location \
+            "https://cli.crossplane.io/stable/${CROSSPLANE_VERSION}/bin/linux_amd64/crossplane" \
+            --output "${RUNNER_TEMP}/crossplane"
+          echo "${CROSSPLANE_SHA256}  ${RUNNER_TEMP}/crossplane" | sha256sum --check
+          curl --fail --silent --show-error --location \
+            "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
+            --output "${RUNNER_TEMP}/kubectl"
+          curl --fail --silent --show-error --location \
+            "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl.sha256" \
+            --output "${RUNNER_TEMP}/kubectl.sha256"
+          echo "$(cat "${RUNNER_TEMP}/kubectl.sha256")  ${RUNNER_TEMP}/kubectl" | sha256sum --check
+          chmod +x "${RUNNER_TEMP}/crossplane" "${RUNNER_TEMP}/kubectl"
+          echo "${RUNNER_TEMP}" >> "$GITHUB_PATH"
+
+      - name: Native builds and both profile renders
+        run: |
+          make render > "${RUNNER_TEMP}/egress-public.yaml"
+          XR=examples/xr-regional.yaml PROFILE=examples/environmentconfig-regional.yaml \
+            make render > "${RUNNER_TEMP}/egress-regional.yaml"
+
+      - name: Pending and matching observation renders
+        run: |
+          make render RENDER_ARGS='--observed-resources examples/observed-pending.yaml' > "${RUNNER_TEMP}/egress-pending.yaml"
+          make render RENDER_ARGS='--observed-resources examples/observed-matching.yaml' > "${RUNNER_TEMP}/egress-matching.yaml"
+
+      - name: Definitions-only Kustomize
+        run: kubectl kustomize . > "${RUNNER_TEMP}/egress-definitions.yaml"
+
+      - name: Assert rendered readiness and resource boundaries
+        run: |
+          function/.venv/bin/python - <<'PY'
+          import os
+          from pathlib import Path
+          import yaml
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          for name, namespace, ready in (
+              ("public", "team-a", "False"),
+              ("regional", "team-b", "False"),
+              ("pending", "team-a", "False"),
+              ("matching", "team-a", "True"),
+          ):
+              objects = list(yaml.safe_load_all((root / f"egress-{name}.yaml").read_text()))
+              xr, = [obj for obj in objects if obj["kind"] == "XIstioSecureEgress"]
+              conditions = xr["status"]["conditions"]
+              assert [c["status"] for c in conditions if c["type"] == "Ready"] == [ready], name
+              assert len(objects) == 5, name
+              assert {obj["kind"] for obj in objects} == {
+                  "XIstioSecureEgress", "ServiceEntry", "Gateway", "DestinationRule", "VirtualService"
+              }, name
+              assert all(obj["metadata"]["namespace"] == namespace for obj in objects), name
+              print(f"{name}: Ready={ready}, four application-local Istio resources")
+
+          definitions = list(yaml.safe_load_all((root / "egress-definitions.yaml").read_text()))
+          assert len(definitions) == 2
+          assert {obj["kind"] for obj in definitions} == {"CompositeResourceDefinition", "Composition"}
+          assert all("namespace" not in obj["metadata"] for obj in definitions)
+          PY
