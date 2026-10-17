@@ -77,6 +77,7 @@ func TestInvalidInputsFailWithoutReplacingState(t *testing.T) {
 		{"bad selector key", `"istio":"egressgateway"`, `"bad key":"egressgateway"`, true},
 		{"bad selector value", `"istio":"egressgateway"`, `"istio":"bad/value"`, true},
 		{"typed selector", `"istio":"egressgateway"`, `"istio":80`, true},
+		{"null selector value", `"istio":"egressgateway"`, `"istio":null`, true},
 		{"zero port", `"port":80`, `"port":0`, true},
 		{"large port", `"port":80`, `"port":65536`, true},
 		{"overflow port", `"port":80`, `"port":4294967376`, true},
@@ -96,6 +97,19 @@ func TestInvalidInputsFailWithoutReplacingState(t *testing.T) {
 				t.Fatalf("expected fatal with desired preserved: %v", rsp)
 			}
 		})
+	}
+}
+
+func TestEmptySelectorLabelValueAccepted(t *testing.T) {
+	req := requestWithProfile()
+	req.RequiredResources["gateway-profile"].Items[0].Resource = resource.MustStructJSON(strings.Replace(profileJSON, `"egressgateway"`, `""`, 1))
+	rsp := run(t, req)
+	if len(rsp.Results) != 0 {
+		t.Fatalf("empty string is a valid label value: %v", rsp.Results)
+	}
+	selector := rsp.Desired.Resources["gateway"].Resource.AsMap()["spec"].(map[string]any)["selector"]
+	if !reflect.DeepEqual(selector, map[string]any{"istio": ""}) {
+		t.Fatalf("empty string label value changed: %v", selector)
 	}
 }
 

@@ -112,6 +112,14 @@ func (f *Function) compose(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionRe
 	if !ok {
 		return fmt.Errorf("profile data must be an object")
 	}
+	// JSON decoding accepts null as a string's zero value; selector values must be actual strings.
+	gatewayData, _ := object["gateway"].(map[string]any)
+	selector, _ := gatewayData["selector"].(map[string]any)
+	for key, value := range selector {
+		if _, ok := value.(string); !ok {
+			return fmt.Errorf("profile gateway.selector label %q must have a string value", key)
+		}
+	}
 	encoded, err := json.Marshal(object)
 	if err != nil {
 		return fmt.Errorf("encode profile data: %w", err)
