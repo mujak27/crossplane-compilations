@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"reflect"
 	"strings"
 
 	"github.com/crossplane/function-sdk-go/logging"
@@ -230,9 +231,81 @@ func (f *Function) compose(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionRe
 			rsp.Desired.Resources[key] = previous
 		}
 		previous.Resource = obj
-		previous.Ready = fnv1.Ready_READY_UNSPECIFIED
+		previous.Ready = fnv1.Ready_READY_FALSE
+		if observedConfigurationMatches(req.GetObserved().GetResources()[key].GetResource().AsMap(), obj.AsMap()) {
+			previous.Ready = fnv1.Ready_READY_TRUE
+		}
 	}
 	return nil
+}
+
+func observedConfigurationMatches(observed, desired map[string]any) bool {
+	for _, field := range []string{"apiVersion", "kind"} {
+		if observed[field] != desired[field] {
+			return false
+		}
+	}
+	metadata, _ := observed["metadata"].(map[string]any)
+	want := desired["metadata"].(map[string]any)
+	if metadata["name"] != want["name"] || metadata["namespace"] != want["namespace"] {
+		return false
+	}
+	if timestamp := metadata["deletionTimestamp"]; timestamp != nil && timestamp != "" {
+		return false
+	}
+	return managedConfigurationMatches(observed["spec"], desired["spec"], desired["kind"].(string))
+}
+
+// Compare the entire spec, not a subset: injected policies can change routing or security.
+func managedConfigurationMatches(observed, desired any, path string) bool {
+	switch want := desired.(type) {
+	case map[string]any:
+		got, ok := observed.(map[string]any)
+		if !ok {
+			return false
+		}
+		for key, value := range want {
+			if !managedConfigurationMatches(got[key], value, path+"/"+key) {
+				return false
+			}
+		}
+		for key, value := range got {
+			if _, managed := want[key]; managed {
+				continue
+			}
+			// Only these explicit defaults leave this function's intended configuration unchanged.
+			switch path + "/" + key {
+			case "ServiceEntry/ports/*/targetPort":
+				if value == float64(0) {
+					continue
+				}
+			case "Gateway/servers/*/tls/httpsRedirect", "DestinationRule/subsets/*/trafficPolicy/portLevelSettings/*/tls/insecureSkipVerify":
+				if value == false {
+					continue
+				}
+			case "VirtualService/http/*/route/*/weight":
+				// Every desired route has exactly one destination, so relative weight is irrelevant.
+				if value == float64(0) || value == float64(100) {
+					continue
+				}
+			}
+			return false
+		}
+		return true
+	case []any:
+		got, ok := observed.([]any)
+		if !ok || len(got) != len(want) {
+			return false
+		}
+		for i := range want {
+			if !managedConfigurationMatches(got[i], want[i], path+"/*") {
+				return false
+			}
+		}
+		return true
+	default:
+		return reflect.DeepEqual(observed, desired)
+	}
 }
 
 func validHostname(host string) bool {

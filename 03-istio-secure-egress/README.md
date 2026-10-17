@@ -42,9 +42,41 @@ non-default Service DNS suffix:
 XR=examples/xr-regional.yaml PROFILE=examples/environmentconfig-regional.yaml make render
 ```
 
-The function leaves readiness unspecified pending a deliberate observed-configuration
-readiness implementation (#24). Render's four unready resources and `Ready=False`
-are expected; neither rendering nor later provisioning readiness proves traffic health.
+Exercise pending (missing/drifted) and matching mock observations serially:
+
+```sh
+make render RENDER_ARGS='--observed-resources examples/observed-pending.yaml'
+make render RENDER_ARGS='--observed-resources examples/observed-matching.yaml'
+```
+
+The first remains `Ready=False`; the second demonstrates provisioning `Ready=True`
+from observed configuration, not successful traffic. These fixtures use the nondefault
+application and gateway namespaces in the default XR/profile pair.
+
+## Provisioning readiness
+
+Each stable resource key (`service-entry`, `gateway`, `gateway-destination-rule`,
+`virtual-service`) is explicitly unready until an observation has the intended API
+version, kind, name, namespace and complete spec, without deletion in progress.
+XR/profile updates reset readiness for each changed resource until its new
+configuration is observed. Incoming composite status and unrelated pipeline state
+are preserved; the function does not force the composite Ready.
+
+Controller metadata and status are ignored, including any Istio conditions.
+Only these extra spec defaults are tolerated: ServiceEntry port `targetPort: 0`,
+Gateway server TLS `httpsRedirect: false`, subset port TLS `insecureSkipVerify: false`,
+and VirtualService single-destination route `weight: 0` or `100`. All other extra,
+missing or changed spec fields remain unready, including injected routing/security
+policies. Lists are compared in order. This deliberately conservative allowlist may
+need extending for a future API/controller's harmless defaults; unknown changes
+never silently count as matching.
+
+Provisioning readiness means **observed application-owned configuration only**.
+It does not establish xDS acceptance/convergence, functioning gateway endpoints,
+platform TLS-rule or trust-Secret existence, runtime upstream certificate validity,
+successful HTTPS, gateway traversal, network-policy enforcement, bypass denial or
+allowed-client authorization. There are no active probes or platform-object
+observations, and no assumed universal Istio Ready or Gateway API Programmed condition.
 
 Go types/validation markers in `function/api/v1alpha1/types.go` are the source of
 truth. Commit generated `xrd.yaml` and deepcopy output with source changes. Generate

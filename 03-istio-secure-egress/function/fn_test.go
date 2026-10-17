@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -311,8 +312,8 @@ func TestIdentityStabilityAndResourceProtocolPreservation(t *testing.T) {
 			t.Fatal("lost owned-resource protocol fields")
 		}
 		for _, key := range []string{"service-entry", "gateway", "gateway-destination-rule", "virtual-service"} {
-			if rsp.Desired.Resources[key].Ready != fnv1.Ready_READY_UNSPECIFIED {
-				t.Fatal("readiness must remain unspecified until #24")
+			if rsp.Desired.Resources[key].Ready != fnv1.Ready_READY_FALSE {
+				t.Fatal("missing observations must remain unready")
 			}
 		}
 		subset := dr.Resource.AsMap()["spec"].(map[string]any)["subsets"].([]any)[0].(map[string]any)["name"].(string)
@@ -331,6 +332,196 @@ func TestIdentityStabilityAndResourceProtocolPreservation(t *testing.T) {
 		next := run(t, req)
 		if !proto.Equal(rsp.Desired, next.Desired) || !proto.Equal(rsp.Requirements, next.Requirements) {
 			t.Fatal("non-deterministic output")
+		}
+	}
+}
+
+func TestObservedConfigurationReadiness(t *testing.T) {
+	req := requestWithProfile()
+	pending := run(t, req)
+	for _, key := range []string{"service-entry", "gateway", "gateway-destination-rule", "virtual-service"} {
+		if pending.Desired.Resources[key].Ready != fnv1.Ready_READY_FALSE {
+			t.Fatalf("%s missing observation must be unready", key)
+		}
+	}
+	req.Observed.Resources = proto.Clone(pending.Desired).(*fnv1.State).Resources
+	matching := run(t, req)
+	if len(matching.Results) != 0 || len(matching.Conditions) != 0 {
+		t.Fatalf("configuration readiness must not invent health conditions: %v", matching)
+	}
+	for _, key := range []string{"service-entry", "gateway", "gateway-destination-rule", "virtual-service"} {
+		if matching.Desired.Resources[key].Ready != fnv1.Ready_READY_TRUE {
+			t.Fatalf("%s matching observation must be ready", key)
+		}
+	}
+}
+
+func TestObservedDriftIsUnreadyPerResource(t *testing.T) {
+	for _, key := range []string{"service-entry", "gateway", "gateway-destination-rule", "virtual-service"} {
+		for _, tc := range []struct{ name, old, replacement string }{
+			{"missing", "", ""},
+			{"nil resource", "", ""},
+			{"wrong version", `networking.istio.io/v1`, `networking.istio.io/v1beta1`},
+			{"wrong kind", `"kind":`, `"unknown":`},
+			{"wrong name", `"name":"istio-secure-egress-demo"`, `"name":"other"`},
+			{"wrong namespace", `"namespace":"team-a"`, `"namespace":"team-b"`},
+			{"missing namespace", `"namespace":"team-a"`, `"unknown":"team-a"`},
+			{"deleting", `"metadata":{`, `"metadata":{"deletionTimestamp":"2026-10-17T00:00:00Z",`},
+			{"missing spec", `"spec":`, `"unknown":`},
+			{"null spec", `"spec":{`, `"spec":null,"unknown":{`},
+			{"injected policy", `"spec":{`, `"spec":{"trafficPolicy":{"tls":{"mode":"DISABLE"}},`},
+		} {
+			t.Run(key+"/"+tc.name, func(t *testing.T) {
+				req := requestWithProfile()
+				req.Observed.Resources = run(t, req).Desired.Resources
+				encoded, err := json.Marshal(req.Observed.Resources[key].Resource.AsMap())
+				if err != nil {
+					t.Fatal(err)
+				}
+				switch tc.name {
+				case "missing":
+					delete(req.Observed.Resources, key)
+				case "nil resource":
+					req.Observed.Resources[key] = nil
+				default:
+					if !strings.Contains(string(encoded), tc.old) {
+						t.Fatal("mutation did not apply")
+					}
+					req.Observed.Resources[key].Resource = resource.MustStructJSON(strings.Replace(string(encoded), tc.old, tc.replacement, 1))
+				}
+				rsp := run(t, req)
+				for _, other := range []string{"service-entry", "gateway", "gateway-destination-rule", "virtual-service"} {
+					want := fnv1.Ready_READY_TRUE
+					if other == key {
+						want = fnv1.Ready_READY_FALSE
+					}
+					if rsp.Desired.Resources[other].Ready != want {
+						t.Fatalf("%s readiness = %v, want %v", other, rsp.Desired.Resources[other].Ready, want)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestRoutingAndSecurityDriftIsUnready(t *testing.T) {
+	for _, tc := range []struct{ key, old, replacement string }{
+		{"service-entry", `"DNS"`, `"STATIC"`},
+		{"service-entry", `"MESH_EXTERNAL"`, `"MESH_INTERNAL"`},
+		{"service-entry", `"HTTP"`, `"TCP"`},
+		{"service-entry", `"number":443`, `"number":8443`},
+		{"service-entry", `"number":80`, `"targetPort":8080,"number":80`},
+		{"service-entry", `"team-a","istio-gateway-east-west"`, `"*"`},
+		{"service-entry", `"hosts":[`, `"addresses":["192.0.2.1"],"hosts":[`},
+		{"service-entry", `"hosts":[`, `"endpoints":[{"address":"192.0.2.1"}],"hosts":[`},
+		{"gateway", `"egressgateway"`, `"other"`},
+		{"gateway", `"selector":{`, `"selector":{"extra":"restriction",`},
+		{"gateway", `"./api.example.com"`, `"*/api.example.com"`},
+		{"gateway", `"HTTPS"`, `"HTTP"`},
+		{"gateway", `"number":80`, `"number":8443`},
+		{"gateway", `"ISTIO_MUTUAL"`, `"SIMPLE"`},
+		{"gateway", `"tls":{`, `"tls":{"subjectAltNames":["other"],`},
+		{"gateway", `"tls":{`, `"tls":{"httpsRedirect":true,`},
+		{"gateway-destination-rule", `"ISTIO_MUTUAL"`, `"DISABLE"`},
+		{"gateway-destination-rule", `"sni":"api.example.com"`, `"sni":"other.example.com"`},
+		{"gateway-destination-rule", `"number":80`, `"number":8443`},
+		{"gateway-destination-rule", `"subsets":[{`, `"subsets":[{"labels":{"app":"other"},`},
+		{"gateway-destination-rule", `"tls":{`, `"tls":{"insecureSkipVerify":true,`},
+		{"gateway-destination-rule", `"exportTo":["."]`, `"exportTo":["*"]`},
+		{"virtual-service", `"host":"api.example.com"`, `"host":"other.example.com"`},
+		{"virtual-service", `"number":443`, `"number":80`},
+		{"virtual-service", `"destination":{`, `"weight":50,"destination":{`},
+		{"virtual-service", `"gateways":["mesh"`, `"gateways":["other"`},
+		{"virtual-service", `"port":80`, `"port":8080`},
+		{"virtual-service", `"http":[{`, `"http":[{"rewrite":{"authority":"other.example.com"},`},
+		{"virtual-service", `"http":[{`, `"http":[{"headers":{"request":{"set":{"authorization":"injected"}}},`},
+		{"virtual-service", `"team-a","istio-gateway-east-west"`, `"*"`},
+	} {
+		t.Run(tc.key+"/"+tc.replacement, func(t *testing.T) {
+			req := requestWithProfile()
+			req.Observed.Resources = run(t, req).Desired.Resources
+			encoded, err := json.Marshal(req.Observed.Resources[tc.key].Resource.AsMap())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(encoded), tc.old) {
+				t.Fatal("mutation did not apply")
+			}
+			req.Observed.Resources[tc.key].Resource = resource.MustStructJSON(strings.Replace(string(encoded), tc.old, tc.replacement, 1))
+			rsp := run(t, req)
+			if rsp.Desired.Resources[tc.key].Ready != fnv1.Ready_READY_FALSE {
+				t.Fatalf("drifted %s is ready", tc.key)
+			}
+		})
+	}
+}
+
+func TestProfileAndHostnameChangesResetObservedReadiness(t *testing.T) {
+	for _, change := range []string{"profile update", "profile selection", "hostname"} {
+		t.Run(change, func(t *testing.T) {
+			req := requestWithProfile()
+			req.Observed.Resources = run(t, req).Desired.Resources
+			req.Desired = run(t, req).Desired
+			for _, key := range []string{"service-entry", "gateway", "gateway-destination-rule", "virtual-service"} {
+				if req.Desired.Resources[key].Ready != fnv1.Ready_READY_TRUE {
+					t.Fatal("initial configuration not ready")
+				}
+			}
+			if change == "hostname" {
+				req.Observed.Composite.Resource = resource.MustStructJSON(strings.Replace(xrJSON, "api.example.com", "updated.example.com", 1))
+			} else {
+				profile := strings.ReplaceAll(strings.ReplaceAll(profileJSON, "istio-gateway-east-west", "gateway-regional"), `"port":80`, `"port":8443`)
+				if change == "profile selection" {
+					req.Observed.Composite.Resource = resource.MustStructJSON(strings.Replace(xrJSON, "east-west", "regional", 1))
+					profile = strings.Replace(profile, "istio-egress-east-west", "istio-egress-regional", 1)
+				}
+				req.RequiredResources["gateway-profile"].Items[0].Resource = resource.MustStructJSON(profile)
+			}
+			pending := run(t, req)
+			for _, key := range []string{"service-entry", "gateway", "gateway-destination-rule", "virtual-service"} {
+				if pending.Desired.Resources[key].Ready != fnv1.Ready_READY_FALSE {
+					t.Fatalf("%s stale configuration stayed ready", key)
+				}
+			}
+			req.Observed.Resources = proto.Clone(pending.Desired).(*fnv1.State).Resources
+			matching := run(t, req)
+			for _, key := range []string{"service-entry", "gateway", "gateway-destination-rule", "virtual-service"} {
+				if matching.Desired.Resources[key].Ready != fnv1.Ready_READY_TRUE {
+					t.Fatalf("%s updated observation not ready", key)
+				}
+			}
+		})
+	}
+}
+
+func TestControllerDefaultsDoNotPreventConfigurationReadiness(t *testing.T) {
+	req := requestWithProfile()
+	req.Observed.Resources = run(t, req).Desired.Resources
+	for key, observed := range req.Observed.Resources {
+		if key == "other" {
+			continue
+		}
+		encoded, err := json.Marshal(observed.Resource.AsMap())
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := strings.Replace(string(encoded), `"metadata":{`, `"status":{"conditions":[{"type":"Ready","status":"False"}]},"metadata":{"uid":"controller-uid","resourceVersion":"42","generation":3,"deletionTimestamp":null,"labels":{"controller":"owned"},"annotations":{"controller":"owned"},"managedFields":[{"manager":"crossplane"}],`, 1)
+		switch key {
+		case "service-entry":
+			text = strings.ReplaceAll(text, `"number":`, `"targetPort":0,"number":`)
+		case "gateway":
+			text = strings.Replace(text, `"tls":{`, `"tls":{"httpsRedirect":false,`, 1)
+		case "gateway-destination-rule":
+			text = strings.Replace(text, `"tls":{`, `"tls":{"insecureSkipVerify":false,`, 1)
+		case "virtual-service":
+			text = strings.ReplaceAll(text, `"destination":{`, `"weight":100,"destination":{`)
+		}
+		observed.Resource = resource.MustStructJSON(text)
+	}
+	rsp := run(t, req)
+	for _, key := range []string{"service-entry", "gateway", "gateway-destination-rule", "virtual-service"} {
+		if rsp.Desired.Resources[key].Ready != fnv1.Ready_READY_TRUE {
+			t.Fatalf("%s harmless defaults/metadata must be ready", key)
 		}
 	}
 }

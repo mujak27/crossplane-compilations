@@ -1,0 +1,75 @@
+# Mock observations only, not an installation unit. No Istio Ready condition is needed.
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: istio-secure-egress-demo
+  namespace: team-a
+  annotations:
+    crossplane.io/composition-resource-name: service-entry
+  resourceVersion: "42"
+spec:
+  hosts: [api.example.com]
+  location: MESH_EXTERNAL
+  resolution: DNS
+  exportTo: [team-a, istio-gateway-east-west]
+  ports:
+  - {number: 80, name: http, protocol: HTTP, targetPort: 0}
+  - {number: 443, name: https, protocol: HTTPS}
+---
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: istio-secure-egress-demo
+  namespace: team-a
+  annotations:
+    crossplane.io/composition-resource-name: gateway
+spec:
+  selector: {istio: egressgateway}
+  servers:
+  - port: {number: 80, name: https-egress, protocol: HTTPS}
+    hosts: [./api.example.com]
+    tls: {mode: ISTIO_MUTUAL, httpsRedirect: false}
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: istio-secure-egress-demo
+  namespace: team-a
+  annotations:
+    crossplane.io/composition-resource-name: gateway-destination-rule
+spec:
+  host: istio-egressgateway.istio-gateway-east-west.svc.cluster.local
+  exportTo: ["."]
+  subsets:
+  - name: egress-ff2c93c6546d4fff03290b855a909d86
+    trafficPolicy:
+      portLevelSettings:
+      - port: {number: 80}
+        tls: {mode: ISTIO_MUTUAL, sni: api.example.com, insecureSkipVerify: false}
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: istio-secure-egress-demo
+  namespace: team-a
+  annotations:
+    crossplane.io/composition-resource-name: virtual-service
+spec:
+  hosts: [api.example.com]
+  exportTo: [team-a, istio-gateway-east-west]
+  gateways: [mesh, team-a/istio-secure-egress-demo]
+  http:
+  - match:
+    - {gateways: [mesh], port: 80}
+    route:
+    - destination:
+        host: istio-egressgateway.istio-gateway-east-west.svc.cluster.local
+        subset: egress-ff2c93c6546d4fff03290b855a909d86
+        port: {number: 80}
+      weight: 100
+  - match:
+    - {gateways: [team-a/istio-secure-egress-demo], port: 80}
+    route:
+    - destination:
+        host: api.example.com
+        port: {number: 443}
