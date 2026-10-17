@@ -148,7 +148,7 @@ func (f *Function) compose(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionRe
 		return fmt.Errorf("profile gateway.port must be a Service port in 1-65535")
 	}
 	host := composite.Spec.Hostname
-	visibility := []any{"."}
+	visibility := []any{composite.Namespace}
 	if g.Namespace != composite.Namespace {
 		visibility = append(visibility, g.Namespace)
 	}

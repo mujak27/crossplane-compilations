@@ -96,5 +96,19 @@ Discovery/Sidecar imports must allow visibility. ServiceEntry/VirtualService exp
 only locally and to the selected gateway namespace; the gateway-Service
 DestinationRule is private. Platform policy/trust must enable verified upstream TLS;
 independent network controls must prevent bypass. This function changes none of these
-prerequisites. Profile changes reconcile independently, not atomically with platform
-TLS/listener changes. Operational trust examples and onboarding are follow-up #25.
+prerequisites.
+
+## Profile updates and migration
+
+Profile edits are independent of Composition revisions and may affect every consumer
+when it reconciles. Updating a profile or selecting another replaces all managed
+gateway routing, selector, port and export settings while keeping application-local
+resource names and subsets stable. ServiceEntry/VirtualService exports explicitly
+name the application and gateway namespaces, deduplicated when they are the same.
+The gateway-Service DestinationRule remains private with `exportTo: ["."]`.
+
+Use a new profile name for staged migration. Prepare the target listeners and
+platform TLS/trust policy first, move consumers and verify their reconciliation,
+then retire the old profile. Rendering the new profile does not prove traffic
+health, platform TLS/trust availability, atomic migration or immediate consumer
+reconciliation. Operational trust examples and onboarding are follow-up #25.
