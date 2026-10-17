@@ -1,0 +1,8 @@
+/generated/crds/
+/.venv/
+/function-istio-secure-egress
+/build/
+*.test
+*.out
+*.xpkg
+__pycache__/

@@ -1,0 +1,5 @@
+*.xpkg
+.venv
+generated
+build
+__pycache__

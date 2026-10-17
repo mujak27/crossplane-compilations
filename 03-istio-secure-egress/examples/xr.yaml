@@ -1,0 +1,11 @@
+apiVersion: platform.mujak.com/v1alpha1
+kind: XIstioSecureEgress
+metadata:
+  name: istio-secure-egress-demo
+  namespace: team-a
+spec:
+  crossplane:
+    compositionRef:
+      name: istio-secure-egress.platform.mujak.com
+  hostname: api.example.com
+  gatewayProfile: east-west
