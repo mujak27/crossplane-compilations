@@ -66,6 +66,41 @@ class ManifestTest(unittest.TestCase):
         self.assertNotEqual(self.manifests[2]["metadata"]["namespace"], "default")
         self.assertIn("--required-resources", (self.root / "render.sh").read_text())
 
+    def test_platform_trust_examples_match_selected_gateway(self):
+        for suffix, rule_path in (("", "public-ca.yaml"), ("-regional", "custom-trust.yaml")):
+            with self.subTest(profile=suffix or "east-west"):
+                xr = yaml.safe_load((self.root / f"examples/xr{suffix}.yaml").read_text())
+                profile = yaml.safe_load((self.root / f"examples/environmentconfig{suffix}.yaml").read_text())
+                objects = list(yaml.safe_load_all((self.root / "examples/platform" / rule_path).read_text()))
+                rule = next(obj for obj in objects if obj["kind"] == "DestinationRule")
+                self.assertEqual(profile["metadata"]["name"], "istio-egress-" + xr["spec"]["gatewayProfile"])
+                self.assertEqual(rule["apiVersion"], "networking.istio.io/v1")
+                for obj in objects:
+                    self.assertEqual(obj["metadata"]["namespace"], profile["data"]["gateway"]["namespace"])
+                    self.assertNotIn("ownerReferences", obj["metadata"])
+                spec = rule["spec"]
+                self.assertEqual(spec["host"], xr["spec"]["hostname"])
+                self.assertEqual(spec["exportTo"], ["."])
+                self.assertEqual(spec["workloadSelector"]["matchLabels"], profile["data"]["gateway"]["selector"])
+                settings = spec["trafficPolicy"]["portLevelSettings"]
+                self.assertEqual(len(settings), 1)
+                self.assertEqual(settings[0]["port"], {"number": 443})
+                expected_tls = {"mode": "SIMPLE", "sni": xr["spec"]["hostname"],
+                                "subjectAltNames": [xr["spec"]["hostname"]], "insecureSkipVerify": False}
+                if suffix:
+                    secret = next(obj for obj in objects if obj["kind"] == "Secret")
+                    self.assertEqual(len(objects), 2)
+                    self.assertEqual(secret["apiVersion"], "v1")
+                    self.assertEqual(secret["type"], "Opaque")
+                    self.assertNotIn("data", secret)
+                    self.assertEqual(set(secret["stringData"]), {"ca.crt"})
+                    self.assertIn("REPLACE_WITH_APPROVED_PEM_TRUST_BUNDLE", secret["stringData"]["ca.crt"])
+                    self.assertFalse(secret["metadata"]["name"].endswith("-cacert"))
+                    expected_tls["credentialName"] = secret["metadata"]["name"]
+                else:
+                    self.assertEqual(len(objects), 1)
+                self.assertEqual(settings[0]["tls"], expected_tls)
+
     def test_contract_rejects_drift(self):
         for index, path, value in [
             (0, ["metadata", "name"], "wrong"),

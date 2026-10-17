@@ -4,6 +4,7 @@ complex configuration behind its custom resource
 
 - [01-tls-ingress](01-tls-ingress): TLS Ingress using inline Go templates.
 - [02-tls-ingress-custom](02-tls-ingress-custom): the same behavior in a custom Go composition function.
+- [03-istio-secure-egress](03-istio-secure-egress): sidecar HTTP through an existing gateway to verified upstream HTTPS, with externally owned gateway profiles and trust.
 - [function-template](function-template): an unnumbered, provider-independent custom Go function starter with generated schemas and a namespaced ConfigMap example.
 
 ## Creating a function
@@ -24,6 +25,7 @@ Each project has a stable ID without its numeric folder prefix:
 | --- | --- | --- | --- |
 | `tls-ingress` | `XIngressTLS` | `xingresstls.platform.mujak.com` | `xingresstls.platform.mujak.com` |
 | `tls-ingress-custom` | `XIngressTLSCustom` | `xingresstlscustom.platform.mujak.com` | `xingresstls-custom.platform.mujak.com` |
+| `istio-secure-egress` | `XIstioSecureEgress` | `xistiosecureegresses.platform.mujak.com` | `istio-secure-egress.platform.mujak.com` |
 | `function-template` | `XExample` | `xexamples.template.example.org` | `function-template.template.example.org` |
 
 - Independent APIs must have unique group/plural pairs and distinct kinds in this
@@ -44,6 +46,13 @@ Each project has a stable ID without its numeric folder prefix:
   resources in the XR namespace. Do not add namespaces to XRDs, Compositions or
   Functions, which are inherently cluster-scoped.
 
+Secure egress uses `platform.mujak.com/v1alpha1`, Go module
+`github.com/mujak27/function-istio-secure-egress`, and separately installed Function
+`function-istio-secure-egress`. Its platform-owned EnvironmentConfigs are named
+`istio-egress-<profile>`; selecting a profile is not gateway-use authorization.
+All four composed Istio objects stay in the XR namespace. Gateway profiles and
+gateway-namespace upstream TLS rules/trust are separate platform installation units.
+
 Each project directory is a **definitions-only Kustomize base**, containing its
 XRD and Composition. Functions, RBAC and example XRs are installed separately so
 shared dependencies can have one owner:
@@ -51,6 +60,7 @@ shared dependencies can have one owner:
 ```sh
 kubectl kustomize 01-tls-ingress
 kubectl kustomize 02-tls-ingress-custom
+kubectl kustomize 03-istio-secure-egress
 kubectl kustomize function-template
 ```
 

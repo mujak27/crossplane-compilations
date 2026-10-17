@@ -1,0 +1,35 @@
+# NOT INSTALL-READY: ca.crt below is deliberately invalid replacement text.
+# Replace it with the approved PUBLIC PEM trust certificate/bundle, never a key.
+# Platform-owned, separately applied; matches xr-regional.yaml and
+# environmentconfig-regional.yaml. Replace illustrative namespace/host/labels together.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: istio-secure-egress-upstream-trust
+  namespace: gateway-regional
+type: Opaque
+stringData:
+  ca.crt: |
+    REPLACE_WITH_APPROVED_PEM_TRUST_BUNDLE
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: istio-secure-egress-custom-upstream
+  namespace: gateway-regional
+spec:
+  host: regional.example.com
+  exportTo: ["."]
+  workloadSelector:
+    matchLabels:
+      app: regional-egress
+  trafficPolicy:
+    portLevelSettings:
+      - port:
+          number: 443
+        tls:
+          mode: SIMPLE
+          credentialName: istio-secure-egress-upstream-trust
+          sni: regional.example.com
+          subjectAltNames: [regional.example.com]
+          insecureSkipVerify: false
