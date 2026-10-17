@@ -1,0 +1,12 @@
+# Alternate portable render fixture: same Composition, different Service DNS suffix.
+apiVersion: apiextensions.crossplane.io/v1beta1
+kind: EnvironmentConfig
+metadata:
+  name: istio-egress-regional
+data:
+  gateway:
+    namespace: gateway-regional
+    serviceFQDN: egress.gateway-regional.svc.corp.example
+    selector:
+      app: regional-egress
+    port: 8443

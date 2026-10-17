@@ -1,0 +1,47 @@
+# Generated from function/api/v1alpha1/types.go; DO NOT EDIT.
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: xistiosecureegresses.platform.mujak.com
+spec:
+  scope: Namespaced
+  group: platform.mujak.com
+  names:
+    kind: XIstioSecureEgress
+    plural: xistiosecureegresses
+    singular: xistiosecureegress
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        description: XIstioSecureEgress composes four application-local Istio resources.
+        properties:
+          spec:
+            description: XIstioSecureEgressSpec selects one external hostname and
+              platform gateway profile.
+            properties:
+              gatewayProfile:
+                description: GatewayProfile selects the EnvironmentConfig istio-egress-<profile>.
+                maxLength: 50
+                minLength: 1
+                pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                type: string
+              hostname:
+                description: Hostname is an exact DNS hostname, never a URL, wildcard
+                  or IP address.
+                maxLength: 253
+                minLength: 1
+                pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$
+                type: string
+                x-kubernetes-validations:
+                - message: hostname must not be an IP address
+                  rule: '!isIP(self)'
+            required:
+            - gatewayProfile
+            - hostname
+            type: object
+        required:
+        - spec
+        type: object

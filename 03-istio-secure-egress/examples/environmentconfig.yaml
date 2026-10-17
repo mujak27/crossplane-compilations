@@ -1,0 +1,12 @@
+# Portable render fixture, not actual platform configuration. Apply separately.
+apiVersion: apiextensions.crossplane.io/v1beta1
+kind: EnvironmentConfig
+metadata:
+  name: istio-egress-east-west
+data:
+  gateway:
+    namespace: istio-gateway-east-west
+    serviceFQDN: istio-egressgateway.istio-gateway-east-west.svc.cluster.local
+    selector:
+      istio: egressgateway
+    port: 80

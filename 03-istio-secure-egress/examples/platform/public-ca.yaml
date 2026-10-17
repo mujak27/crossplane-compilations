@@ -1,0 +1,24 @@
+# Platform-owned, separately applied. Illustrative values match xr.yaml and
+# environmentconfig.yaml; replace them together for the actual installation.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: istio-secure-egress-public-upstream
+  namespace: istio-gateway-east-west
+spec:
+  host: api.example.com
+  exportTo: ["."]
+  workloadSelector:
+    matchLabels:
+      istio: egressgateway
+  trafficPolicy:
+    portLevelSettings:
+      - port:
+          number: 443
+        tls:
+          mode: SIMPLE
+          sni: api.example.com
+          subjectAltNames: [api.example.com]
+          insecureSkipVerify: false
+# No credentialName or CA file: verify against the gateway proxy's system roots.
+# No custom Secret is required for this public-CA case.

@@ -1,0 +1,13 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: istio-secure-egress.platform.mujak.com
+spec:
+  compositeTypeRef:
+    apiVersion: platform.mujak.com/v1alpha1
+    kind: XIstioSecureEgress
+  mode: Pipeline
+  pipeline:
+    - step: render
+      functionRef:
+        name: function-istio-secure-egress

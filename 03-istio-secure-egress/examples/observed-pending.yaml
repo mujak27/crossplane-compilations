@@ -1,0 +1,14 @@
+# Mock drifted Gateway; the other three observations are missing.
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: istio-secure-egress-demo
+  namespace: team-a
+  annotations:
+    crossplane.io/composition-resource-name: gateway
+spec:
+  selector: {istio: wrong-gateway}
+  servers:
+  - port: {number: 80, name: https-egress, protocol: HTTPS}
+    hosts: [./api.example.com]
+    tls: {mode: ISTIO_MUTUAL}
