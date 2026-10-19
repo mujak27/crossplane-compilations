@@ -34,7 +34,15 @@ runs these checks on GitHub-hosted Ubuntu runners for relevant pull requests and
 pushes to `main`, or manually. It includes Go/Python tests, uncached race tests,
 vet, repeated generation with committed-drift checks, native builds, both profile
 renders, pending/matching readiness assertions, and definitions-only Kustomize.
-It does not publish packages, deploy resources, or verify live traffic/TLS.
+It also builds a `linux/amd64` runtime image and embeds it in an installable
+Crossplane `.xpkg` package on each run. Only a push of a strict
+`function-istio-secure-egress-vMAJOR.MINOR.PATCH` tag uploads the package and
+publishes it to GHCR; ordinary validation runs do not publish. This repository
+pins the Function manifest to `ghcr.io/mujak27/function-istio-secure-egress:v0.1.0`
+as the intended release. The immutable runtime package tag
+`function-istio-secure-egress-v0.1.0` is separate from the definitions-only
+Kustomize tag `istio-secure-egress-v0.1.0`. The workflow does not deploy resources
+or verify live traffic/TLS.
 
 `make render` starts a native function on localhost:9443 and refuses an occupied
 port. It supplies `examples/environmentconfig.yaml` through `--required-resources`
@@ -122,9 +130,9 @@ handshake. Crossplane needs read access to EnvironmentConfigs. Selecting a profi
 not authorization to use that gateway. Profiles contain no credentials or certificates.
 
 Kustomize includes **only** the v2 Namespaced XRD and generic Composition. Install
-the shared Function separately with a real published package; `functions.yaml` uses
-an **unpublished placeholder**, not an installable release. Apply profiles and XRs
-separately. The fixture profile is illustrative, not actual environment configuration.
+the shared Function separately using the package pinned in `functions.yaml`. Apply
+profiles and XRs separately. The fixture profile is illustrative, not actual
+environment configuration.
 Actual profiles, TLS/trust policy and GitOps wiring belong to `k8s-crossplane`, which
 this example does not modify or read at runtime.
 
