@@ -17,3 +17,7 @@ Use the five default triage labels. See `docs/agents/triage-labels.md`.
 ### Domain docs
 
 Single-context: root `GLOSSARY.md` and `docs/adr/`. Before exploring, read `docs/agents/domain.md`.
+
+### Crossplane functions
+
+When adding or changing a composition function, read `docs/adding-a-function.md`.
