@@ -9,13 +9,17 @@ complex configuration behind its custom resource
 
 ## Creating a function
 
-In OpenCode, invoke `@create-crossplane-function`. The project-local
-[Crossplane skill](.opencode/skills/create-crossplane-function/SKILL.md) automatically
-loads `plan-to-tickets` for worktree placement, approvals, tickets, and explicitly
-requested implementation, while supplying domain, template, and validation
-requirements. Install or update `plan-to-tickets` from `mujak27/skills` first;
-older user-only versions cannot be loaded automatically. Approval gates remain
-unchanged, including explicit invocation of user-only companion skills when prompted.
+Follow [docs/adding-a-function.md](docs/adding-a-function.md) for the complete
+harness-neutral workflow: design, template baseline, scaffolding, schema
+generation, namespaced v2 rules, and acceptance checks. The template's
+[manual customization checklist](function-template/README.md#manual-customization-checklist)
+remains authoritative for adapting the starter.
+
+Agents can use the `create-crossplane-function` skill at
+[.agents/skills/create-crossplane-function/SKILL.md](.agents/skills/create-crossplane-function/SKILL.md).
+OpenCode V2 discovers `.agents/skills` directly; Claude Code discovers it through
+the `.claude/skills` symlink. Issue- or ticket-based coordination through
+`plan-to-tickets` is optional and used only when requested.
 
 ## Naming and installation
 
